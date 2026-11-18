@@ -118,7 +118,7 @@
       '<div class="brand">' + C.logoBlock(36) + '<div><div class="brand-name">Cobro</div><div class="small muted">' + esc(b.name) + '</div></div></div>' +
       '<nav class="nav">' + items.join('') + '</nav>' +
       '<div class="side-bottom">' + (bottom.length ? '<nav class="nav">' + bottom.join('') + '</nav>' : '') +
-      '<div class="local-chip" title="Los datos se guardan en este equipo y la app funciona sin internet">' + C.icon('drive', 16) + '<span>Guardado en este equipo</span></div>' +
+      (C.nubeChipHtml ? C.nubeChipHtml() : '<div class="local-chip" title="Los datos se guardan en este equipo y la app funciona sin internet">' + C.icon('drive', 16) + '<span>Guardado en este equipo</span></div>') +
       '<div class="user-chip"><span class="avatar ' + (admin ? 'admin' : '') + '" aria-hidden="true">' + esc(C.initials(u.email)) + '</span>' +
       '<div class="user-text"><span class="strong">' + (admin ? 'Administrador' : 'Empleado') + '</span><span class="small muted wrap" title="' + esc(u.email) + '">' + esc(u.email) + '</span></div>' +
       '<button type="button" class="icon-btn" data-lock aria-label="Bloquear (pedir PIN)" title="Bloquear">' + C.icon('lock') + '</button></div>' +

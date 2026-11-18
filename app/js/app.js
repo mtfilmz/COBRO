@@ -39,5 +39,6 @@
     autoBackup();
     setInterval(autoBackup, 6 * 3600 * 1000);
     setTimeout(function () { C.fintrackSync(); }, 4000);
+    setTimeout(function () { C.nubeSync(); }, 6000);
   }).catch(fatal);
 })();

@@ -39,10 +39,13 @@ Si un paso falla, abre la ejecución en **Actions**, copia el mensaje de error y
 - **Programa de Windows:** en la carpeta de datos del usuario de Windows (`%LOCALAPPDATA%\pr.supermobile.cobro`). Los respaldos y exportaciones van a `Documentos\Cobro`.
 - Si olvidas el PIN del administrador: en la pantalla de entrada usa **¿Olvidaste el PIN del administrador?** con el código de recuperación que se mostró al configurar. Puedes crear uno nuevo en **Ajustes › Usuarios**.
 
-## Siguiente fase (pendiente)
+## Copia en la nube
 
-- Copia en la nube (Supabase) y sincronización entre varios dispositivos, con los mismos correos.
-- Conexión con Balance Board.
+- **Ajustes › Nube:** Cobro entra con la cuenta de Factura (correo y contraseña; la contraseña no se guarda) y sube una copia de clientes, facturas, pagos, catálogo, fotos, lotes, ajustes del negocio y numeración a la tabla `cobro_records` de la base de datos de Factura.
+- Cada fila es de un solo usuario (seguridad por fila). Gana el cambio más reciente; la numeración siempre toma el mayor.
+- Sin internet, los cambios esperan en cola y se suben solos. Los tokens de la sesión se guardan en `nube.json`, en la carpeta de datos de la app, fuera de los respaldos.
+- En otra computadora: instalar Cobro, crear el administrador y conectar la nube. No volver a importar el historial de Factura allí.
+- Los pagos que bajan de la nube no se envían a FinTrack; cada pago lo envía la computadora donde se cobró.
 
 ## Estructura
 

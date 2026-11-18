@@ -13,6 +13,11 @@
   C.data = { users: [], customers: [], catalog: [], invoices: [], payments: [], audit: [], batches: [], outbox: [] };
   C.session = { user: null };
 
+  /* Copia en la nube: lo que se sube y la cola de cambios pendientes ('almacén/id' → hora del cambio). */
+  C.SYNCED = ['customers', 'catalog', 'invoices', 'payments', 'photos', 'batches'];
+  C.syncq = {};
+  try { C.nubeOn = !!(JSON.parse(localStorage.getItem('cobro-nube') || '{}') || {}).on; } catch (e) { C.nubeOn = false; }
+
   C.DEFAULT_SETTINGS = {
     business: {
       name: 'Super Mobile Tech Repair',
@@ -71,6 +76,7 @@
       kv.forEach(function (row) {
         if (row.key === 'settings') C.settings = mergeSettings(row.value);
         if (row.key === 'counters') C.counters = Object.assign({ venta: 0, servicio: 0, reparacion: 0 }, row.value);
+        if (row.key === 'syncq') C.syncq = Object.assign({}, row.value || {});
       });
       C.data.invoices.sort(byNewest);
       C.data.audit.sort(function (a, b) { return b.at - a.at; });
@@ -87,6 +93,7 @@
     d.billing.tax = Object.assign({}, C.DEFAULT_SETTINGS.billing.tax, (v.billing || {}).tax || {});
     if (!Array.isArray(d.billing.methods) || !d.billing.methods.length) d.billing.methods = C.DEFAULT_SETTINGS.billing.methods.slice();
     d.fintrack = Object.assign({}, v.fintrack || {});
+    d._m = v._m || 0;
     return d;
   }
 
@@ -96,7 +103,38 @@
   }
 
   /* Guarda varios cambios en UNA transacción: o se guarda todo o nada. */
+  /* Marca la hora de cada cambio local (_m) y, con la nube conectada, lo pone en la cola para subir.
+     Los cambios que llegan de la nube (remote) no se vuelven a subir. */
+  function track(changes) {
+    var now = Date.now();
+    var put = changes.put || {};
+    var del = changes.del || {};
+    var touched = false;
+    C.SYNCED.forEach(function (s) {
+      (put[s] || []).forEach(function (o) {
+        o._m = Math.max(now, (o._m || 0) + 1);
+        if (C.nubeOn) { C.syncq[s + '/' + o.id] = o._m; touched = true; }
+      });
+      (del[s] || []).forEach(function (id) {
+        if (C.nubeOn) { C.syncq[s + '/' + id] = now; touched = true; }
+      });
+    });
+    (put.kv || []).forEach(function (row) {
+      if (row.key === 'settings' && row.value) {
+        row.value._m = now;
+        if (C.nubeOn) { C.syncq['settings/negocio'] = now; touched = true; }
+      }
+      if (row.key === 'counters' && C.nubeOn) { C.syncq['counters/numeros'] = now; touched = true; }
+    });
+    if (touched) {
+      put.kv = (put.kv || []).filter(function (r) { return r.key !== 'syncq'; }).concat([{ key: 'syncq', value: C.syncq }]);
+      changes.put = put;
+    }
+    return touched;
+  }
+
   C.commit = function (changes) {
+    var queued = !changes.remote && track(changes);
     var put = changes.put || {};
     var del = changes.del || {};
     var names = Object.keys(put).concat(Object.keys(del)).filter(function (v, i, a) { return a.indexOf(v) === i; });
@@ -125,11 +163,19 @@
         });
         C.data.invoices.sort(byNewest);
         C.data.audit.sort(function (a, b) { return b.at - a.at; });
+        if (queued && C.nubeChanged) C.nubeChanged();
         resolve();
       };
       tx.onerror = function () { reject(tx.error || new Error('No se pudo guardar.')); };
       tx.onabort = function () { reject(tx.error || new Error('No se pudo guardar.')); };
     });
+  };
+
+  C.getOne = function (store, id) {
+    return req(idb.transaction(store, 'readonly').objectStore(store).get(id));
+  };
+  C.allIds = function (store) {
+    return req(idb.transaction(store, 'readonly').objectStore(store).getAllKeys());
   };
 
   C.getPhotos = function (invoiceId) {
@@ -446,7 +492,7 @@
       STORES.forEach(function (s) { (b[s] || []).forEach(function (o) { tx.objectStore(s).put(o); }); });
       tx.oncomplete = function () { resolve(); };
       tx.onerror = function () { reject(tx.error); };
-    }).then(C.load);
+    }).then(C.load).then(function () { if (C.nubeAfterRestore) return C.nubeAfterRestore(); });
   };
 
   C.revertBatch = function (batch) {

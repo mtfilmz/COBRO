@@ -3,7 +3,7 @@
   'use strict';
   var C = window.Cobro;
   var esc = C.esc;
-  var TABS = [['negocio', 'Negocio'], ['apariencia', 'Apariencia'], ['usuarios', 'Usuarios'], ['facturacion', 'Facturación'], ['fintrack', 'FinTrack'], ['datos', 'Datos y respaldo']];
+  var TABS = [['negocio', 'Negocio'], ['apariencia', 'Apariencia'], ['usuarios', 'Usuarios'], ['facturacion', 'Facturación'], ['fintrack', 'FinTrack'], ['nube', 'Nube'], ['datos', 'Datos y respaldo']];
   var PERMS = [
     ['crear', 'Crear facturas', 'Incluye cobrar al momento de crearla', false],
     ['clientes', 'Ver y agregar clientes', 'Necesario para buscar clientes al facturar', false],
@@ -143,6 +143,37 @@
     return html;
   }
 
+  function nube() {
+    var n = C.nube || {};
+    var on = !!C.nubeOn;
+    var expired = on && n.status === 'auth';
+    var pend = C.nubePending ? C.nubePending() : 0;
+    var label = !on ? 'Sin conectar' : expired ? 'Vuelve a conectar' : n.status === 'sync' ? 'Sincronizando' : pend ? 'Cambios por subir' : n.status === 'offline' ? 'Sin internet' : n.status === 'error' ? 'Con problema' : 'Al día';
+    var cls = !on ? 'void' : (expired || n.status === 'error') ? 'void' : (pend || n.status === 'sync' || n.status === 'offline') ? 'pend' : 'ok';
+    var html = '<section class="card pad stack"><div class="card-head flat"><h2 class="h2">Copia en la nube</h2><span class="pill ' + cls + '">' + label + '</span></div>' +
+      '<p class="small muted">Cobro sigue guardando todo en esta computadora y funciona sin internet. Con la nube conectada, además sube una copia de clientes, facturas, pagos, catálogo, fotos y ajustes del negocio a la base de datos de Factura, con tu misma cuenta. Así no pierdes nada si la computadora se daña y puedes usar Cobro en otra computadora con los mismos datos.</p>';
+    if (!C.isDesktop()) return html + '<p class="notice">' + C.icon('info', 16) + 'La copia en la nube funciona en el programa de Windows.</p></section>';
+    if (on && !expired) {
+      html += '<div class="kpis"><div class="card kpi"><span class="muted">Cuenta</span><span class="strong wrap">' + esc(n.email || '') + '</span></div>' +
+        '<div class="card kpi"><span class="muted">Por subir</span><span class="amount-md' + (pend ? ' pend-text' : '') + '">' + pend + '</span></div>' +
+        '<div class="card kpi"><span class="muted">Última sincronización</span><span class="strong">' + (n.lastSync ? esc(C.stamp(n.lastSync)) : 'Todavía no') + '</span></div></div>' +
+        (n.progress ? '<p class="small muted">Subiendo ' + n.progress.done + ' de ' + n.progress.total + '…</p>' : '') +
+        (n.error && n.status !== 'sync' ? '<div class="notice danger">' + C.icon('info', 16) + '<div>' + esc(n.error) + '</div></div>' : '') +
+        '<div class="actions-left"><button type="button" class="btn" id="nb-sync"' + (n.status === 'sync' ? ' disabled' : '') + '>' + C.icon('refresh', 16) + 'Sincronizar ahora</button>' +
+        '<button type="button" class="btn danger-text" id="nb-off">Desconectar</button></div>' +
+        '<p class="small muted">Se sincroniza sola cada 2 minutos, unos segundos después de cada cambio y al volver el internet.</p></section>';
+    } else {
+      html += (expired ? '<div class="notice danger">' + C.icon('info', 16) + '<div>La sesión venció. Los cambios siguen guardados aquí y se suben cuando vuelvas a conectar.</div></div>' : '') +
+        '<form id="nb-form" class="stack" autocomplete="off">' +
+        '<div class="grid2"><label class="field">Correo de Factura<input class="input" type="email" name="email" value="' + esc(n.email || 'supermobilepr@gmail.com') + '"></label>' +
+        '<label class="field">Contraseña de Factura<input class="input" type="password" name="password" autocomplete="current-password"></label></div>' +
+        '<p class="small muted">Usa la misma cuenta con la que entras a Factura. La contraseña no se guarda en Cobro; solo se usa para iniciar la sesión.</p>' +
+        '<div class="actions-left"><button type="submit" class="btn primary" id="nb-connect">' + C.icon('cloud', 16) + 'Conectar</button></div></form>' +
+        '<div class="notice">' + C.icon('info', 16) + '<div><strong>En otra computadora:</strong> instala Cobro, crea el administrador y conecta aquí con la misma cuenta. Se bajan todos los datos. No vuelvas a importar el historial de Factura allí, porque saldría repetido.</div></div></section>';
+    }
+    return html;
+  }
+
   function showKey(key) {
     return C.modal({
       title: 'Clave de conexión con FinTrack', okLabel: 'Ya la copié, guardar', cancelLabel: 'Cancelar',
@@ -185,7 +216,7 @@
     allowed: function () { return C.isAdmin(); },
     render: function (tab) {
       tab = tab || 'negocio';
-      var body = { negocio: negocio, apariencia: apariencia, usuarios: usuarios, facturacion: facturacion, fintrack: fintrack, datos: datos }[tab] || negocio;
+      var body = { negocio: negocio, apariencia: apariencia, usuarios: usuarios, facturacion: facturacion, fintrack: fintrack, nube: nube, datos: datos }[tab] || negocio;
       return '<header class="page-head"><div><h1>Ajustes</h1></div></header>' +
         '<nav class="tabs" aria-label="Secciones de ajustes">' + TABS.map(function (t) {
           return '<a href="#/ajustes/' + t[0] + '" class="tab' + (tab === t[0] ? ' on' : '') + '"' + (tab === t[0] ? ' aria-current="page"' : '') + '>' + t[1] + '</a>';
@@ -255,6 +286,37 @@
       if (fo) fo.addEventListener('click', function () {
         C.confirm('Desconectar FinTrack', 'Los pagos nuevos dejarán de enviarse. Lo que ya está en FinTrack no se borra. Desconecta también a Cobro en FinTrack.', 'Desconectar', true).then(function (ok) {
           if (ok) C.fintrackDisconnect().then(function () { C.toast('FinTrack desconectado.'); C.render(); }).catch(C.fail);
+        });
+      });
+      var nf = root.querySelector('#nb-form');
+      if (nf) nf.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var btn = root.querySelector('#nb-connect');
+        var email = nf.email.value.trim().toLowerCase();
+        var password = nf.password.value;
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return C.toast('Escribe el correo con el que entras a Factura.', 'error');
+        if (!password) return C.toast('Escribe la contraseña de Factura.', 'error');
+        btn.disabled = true;
+        btn.lastChild.textContent = 'Conectando…';
+        C.nubeConnect(email, password).then(function () {
+          nf.password.value = '';
+          C.toast('Conectado. Subiendo tus datos a la nube…');
+          C.render();
+        }).catch(function (err) {
+          btn.disabled = false;
+          btn.lastChild.textContent = 'Conectar';
+          C.fail(err);
+        });
+      });
+      var nsy = root.querySelector('#nb-sync');
+      if (nsy) nsy.addEventListener('click', function () {
+        nsy.disabled = true;
+        C.nubeSync(true).then(function () { C.toast('Nube al día.'); C.render(); }).catch(function (err) { C.fail(err); C.render(); });
+      });
+      var nof = root.querySelector('#nb-off');
+      if (nof) nof.addEventListener('click', function () {
+        C.confirm('Desconectar la nube', 'Cobro dejará de subir y bajar cambios en esta computadora. Los datos se quedan aquí y la copia en la nube no se borra.', 'Desconectar', true).then(function (ok) {
+          if (ok) C.nubeDisconnect().then(function () { C.toast('Nube desconectada.'); C.render(); }).catch(C.fail);
         });
       });
       var nc = root.querySelector('#new-code');
