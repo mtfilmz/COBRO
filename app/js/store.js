@@ -5,12 +5,12 @@
   var C = (window.Cobro = window.Cobro || {});
 
   var DB_NAME = 'cobro';
-  var DB_VERSION = 1;
-  var STORES = ['users', 'customers', 'catalog', 'invoices', 'payments', 'photos', 'audit', 'batches'];
-  var MEMORY = ['users', 'customers', 'catalog', 'invoices', 'payments', 'audit', 'batches'];
+  var DB_VERSION = 2;
+  var STORES = ['users', 'customers', 'catalog', 'invoices', 'payments', 'photos', 'audit', 'batches', 'outbox'];
+  var MEMORY = ['users', 'customers', 'catalog', 'invoices', 'payments', 'audit', 'batches', 'outbox'];
   var idb = null;
 
-  C.data = { users: [], customers: [], catalog: [], invoices: [], payments: [], audit: [], batches: [] };
+  C.data = { users: [], customers: [], catalog: [], invoices: [], payments: [], audit: [], batches: [], outbox: [] };
   C.session = { user: null };
 
   C.DEFAULT_SETTINGS = {
@@ -86,6 +86,7 @@
     d.billing.prefixes = Object.assign({}, C.DEFAULT_SETTINGS.billing.prefixes, (v.billing || {}).prefixes || {});
     d.billing.tax = Object.assign({}, C.DEFAULT_SETTINGS.billing.tax, (v.billing || {}).tax || {});
     if (!Array.isArray(d.billing.methods) || !d.billing.methods.length) d.billing.methods = C.DEFAULT_SETTINGS.billing.methods.slice();
+    d.fintrack = Object.assign({}, v.fintrack || {});
     return d;
   }
 
@@ -368,14 +369,19 @@
 
     if (pay && C.num(pay.amount) > 0) {
       var amount = Math.min(C.round2(pay.amount), inv.total);
-      put.payments = [{ id: C.uid('pag'), invoiceId: inv.id, amount: amount, method: pay.method, date: inv.date, createdAt: now, createdBy: inv.createdBy, source: 'nuevo' }];
+      put.payments = [{ id: C.uuid(), invoiceId: inv.id, amount: amount, method: pay.method, date: inv.date, createdAt: now, createdBy: inv.createdBy, source: 'nuevo' }];
       put.audit.push(C.auditRow('Cobro', 'Cobrado ' + C.money(amount) + ' con ' + pay.method, inv.id));
+      var row = C.fintrackOutboxRow ? C.fintrackOutboxRow(put.payments[0], inv) : null;
+      if (row) put.outbox = [row];
     }
     if (photos && photos.length) {
       put.photos = photos.slice(0, 3).map(function (src, i) { return { id: C.uid('foto'), invoiceId: inv.id, dataUrl: src, createdAt: now + i, createdBy: inv.createdBy }; });
       put.audit.push(C.auditRow('Fotos', put.photos.length + ' foto(s) del equipo', inv.id));
     }
-    return C.commit({ put: put }).then(function () { return inv; });
+    return C.commit({ put: put }).then(function () {
+      if (put.outbox && C.fintrackSync) setTimeout(C.fintrackSync, 300);
+      return inv;
+    });
   };
 
   C.addPayment = function (inv, amount, method, date) {
@@ -384,14 +390,21 @@
     if (inv.voided) return Promise.reject(new Error('La factura está anulada.'));
     if (amount <= 0) return Promise.reject(new Error('Escribe un monto mayor que cero.'));
     if (amount > v.balance) return Promise.reject(new Error('El pago supera el saldo de ' + C.money(v.balance) + '.'));
-    var p = { id: C.uid('pag'), invoiceId: inv.id, amount: amount, method: method, date: date || C.today(), createdAt: Date.now(), createdBy: C.session.user.email, source: 'nuevo' };
-    return C.commit({ put: { payments: [p], audit: [C.auditRow('Cobro', 'Pago de ' + C.money(amount) + ' con ' + method, inv.id)] } });
+    var p = { id: C.uuid(), invoiceId: inv.id, amount: amount, method: method, date: date || C.today(), createdAt: Date.now(), createdBy: C.session.user.email, source: 'nuevo' };
+    var put = { payments: [p], audit: [C.auditRow('Cobro', 'Pago de ' + C.money(amount) + ' con ' + method, inv.id)] };
+    var row = C.fintrackOutboxRow ? C.fintrackOutboxRow(p, inv) : null;
+    if (row) put.outbox = [row];
+    return C.commit({ put: put }).then(function () { if (row && C.fintrackSync) setTimeout(C.fintrackSync, 300); });
   };
 
   C.voidInvoice = function (inv, reason) {
     if (!C.isAdmin()) return Promise.reject(new Error('Solo el administrador puede anular facturas.'));
     var copy = Object.assign({}, inv, { voided: true, voidedAt: Date.now(), voidReason: reason, voidedBy: C.session.user.email });
-    return C.commit({ put: { invoices: [copy], audit: [C.auditRow('Anulación', 'Factura anulada. Motivo: ' + reason, inv.id)] } });
+    var cancel = C.data.outbox.filter(function (o) { return o.invoiceId === inv.id && o.status !== 'enviado'; })
+      .map(function (o) { return Object.assign({}, o, { status: 'cancelado', lastError: 'Factura anulada antes de enviarse' }); });
+    var put = { invoices: [copy], audit: [C.auditRow('Anulación', 'Factura anulada. Motivo: ' + reason, inv.id)] };
+    if (cancel.length) put.outbox = cancel;
+    return C.commit({ put: put });
   };
 
   C.setDeviceStatus = function (inv, status) {
@@ -418,7 +431,7 @@
         settings: C.settings, counters: C.counters,
         users: C.data.users.map(function (u) { return Object.assign({}, u); }),
         customers: C.data.customers, catalog: C.data.catalog, invoices: C.data.invoices, payments: C.data.payments,
-        photos: photos, audit: C.data.audit, batches: C.data.batches
+        photos: photos, audit: C.data.audit, batches: C.data.batches, outbox: C.data.outbox
       };
     });
   };

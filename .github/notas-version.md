@@ -1,4 +1,5 @@
-Novedades de Cobro 0.2.0:
-- Actualizaciones automáticas: Cobro avisa al administrador cuando hay una versión nueva y la instala solo si la autorizas.
-- Antes de actualizar guarda un respaldo de tus datos en Documentos › Cobro › Respaldos.
-- En Ajustes › Datos y respaldo puedes ver la versión instalada y buscar actualizaciones.
+Novedades de Cobro 0.3.0:
+- Conexión con FinTrack: cada pago nuevo llega a FinTrack como ingreso, con su categoría (Ventas, Servicios o Reparaciones).
+- Sin internet, los pagos esperan en cola y se envían solos al volver la conexión, sin duplicarse.
+- Nueva sección Ajustes › FinTrack para conectar, ver lo enviado y lo pendiente.
+- En el detalle de cada factura se ve si cada pago ya llegó a FinTrack.

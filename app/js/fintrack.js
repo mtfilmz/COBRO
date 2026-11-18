@@ -1,0 +1,169 @@
+/* Cobro · conexión con FinTrack: cada pago nuevo se envía como ingreso.
+   Sin internet los pagos esperan en una cola y se envían solos al volver la conexión.
+   FinTrack no duplica: el mismo pago (mismo identificador y mismos datos) devuelve el mismo recibo. */
+(function () {
+  'use strict';
+  var C = window.Cobro;
+  var syncing = false;
+  var UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  var METHODS = { 'efectivo': 'cash', 'tarjeta': 'card', 'transferencia': 'transfer', 'ath movil': 'transfer' };
+  var CATEGORY = { venta: 'Ventas', servicio: 'Servicios', reparacion: 'Reparaciones' };
+
+  function invoke(cmd, args) { return window.__TAURI__.core.invoke(cmd, args || {}); }
+  function cfg() { return C.settings.fintrack || {}; }
+
+  C.fintrackConnected = function () { var f = cfg(); return !!(f.bindingId && f.enabled); };
+
+  C.fintrackPayload = function (payment, inv) {
+    var f = cfg();
+    var names = (inv.lines || []).map(function (l) { return String(l.name || '').trim(); }).filter(Boolean).join(', ');
+    var equipment = names || ('Factura ' + inv.number);
+    if (inv.type === 'reparacion' && inv.device && inv.device.model) equipment = inv.device.model.trim() + ' — ' + equipment;
+    equipment = equipment.slice(0, 400);
+    var client = String(inv.customer.name || 'Cliente').trim().slice(0, 200) || 'Cliente';
+    var p = {
+      version: 1, source_app: 'cobro', binding_id: f.bindingId, payment_id: payment.id,
+      repair_id: String(inv.number).slice(0, 200), client_name: client
+    };
+    var phone = String(inv.customer.phone || '').trim().slice(0, 20);
+    if (phone) p.client_phone = phone;
+    p.equipment = equipment;
+    p.amount = C.round2(payment.amount);
+    p.paid_on = payment.date;
+    p.method = METHODS[C.norm(payment.method)] || 'other';
+    p.type = 'income';
+    p.source = 'business';
+    p.category = CATEGORY[inv.type] || 'Reparaciones';
+    p.description = 'Pago de ' + client + ' — ' + equipment;
+    return p;
+  };
+
+  /* Fila de la cola para un pago nuevo; solo si Cobro está conectado y el pago tiene identificador válido. */
+  C.fintrackOutboxRow = function (payment, inv) {
+    if (!C.fintrackConnected() || payment.source !== 'nuevo' || !UUID.test(payment.id) || !(payment.amount > 0)) return null;
+    return {
+      id: payment.id, invoiceId: inv.id, number: inv.number, amount: C.round2(payment.amount),
+      payload: JSON.stringify(C.fintrackPayload(payment, inv)),
+      status: 'pendiente', tries: 0, nextAt: 0, createdAt: Date.now(), lastError: '', movementId: ''
+    };
+  };
+
+  C.fintrackRowFor = function (paymentId) {
+    return C.data.outbox.find(function (o) { return o.id === paymentId; }) || null;
+  };
+
+  C.FT_LABEL = { pendiente: 'Pendiente de enviar', enviado: 'Enviado a FinTrack', conflicto: 'Rechazado por FinTrack', rechazado: 'Rechazado por FinTrack', cancelado: 'No se envió' };
+  C.FT_CLASS = { pendiente: 'pend', enviado: 'ok', conflicto: 'void', rechazado: 'void', cancelado: 'void' };
+
+  function save(rows) { return rows.length ? C.commit({ put: { outbox: rows } }) : Promise.resolve(); }
+
+  /* Envía los pagos pendientes, uno por uno, en orden. */
+  C.fintrackSync = function () {
+    if (syncing || !C.isDesktop() || !C.fintrackConnected() || !navigator.onLine) return Promise.resolve();
+    var now = Date.now();
+    var queue = C.data.outbox.filter(function (o) { return o.status === 'pendiente' && (o.nextAt || 0) <= now; })
+      .sort(function (a, b) { return a.createdAt - b.createdAt; });
+    if (!queue.length) return Promise.resolve();
+    syncing = true;
+    var bindingId = cfg().bindingId;
+    var stop = false;
+    var chain = Promise.resolve();
+    queue.forEach(function (row) {
+      chain = chain.then(function () {
+        if (stop) return;
+        return invoke('fintrack_enviar_pago', { cuerpo: row.payload, idempotencia: row.id }).then(function (r) {
+          var next = Object.assign({}, row, { tries: (row.tries || 0) + 1, lastTryAt: Date.now() });
+          var body = null;
+          try { body = JSON.parse(r.body || 'null'); } catch (e) { body = null; }
+          if (r.status === 200 && body && body.status === 'confirmed' && body.payment_id === row.id && body.binding_id === bindingId && UUID.test(String(body.movement_id || ''))) {
+            next.status = 'enviado'; next.movementId = body.movement_id; next.sentAt = Date.now(); next.lastError = '';
+          } else if (r.status === 409) {
+            next.status = 'conflicto'; next.lastError = (body && body.error) || 'FinTrack ya tiene este pago con otros datos.';
+          } else if (r.status === 400 || r.status === 413) {
+            next.status = 'rechazado'; next.lastError = (body && body.error) || 'FinTrack no aceptó el pago.';
+          } else if (r.status === 403 || r.status === 401) {
+            next.lastError = (body && body.error) || 'FinTrack no aceptó la conexión. Revisa la clave o vuelve a conectar.';
+            next.nextAt = Date.now() + 30 * 60 * 1000; stop = true;
+          } else {
+            next.lastError = (body && body.error) || ('FinTrack respondió ' + r.status + '. Se reintentará.');
+            next.nextAt = Date.now() + Math.min(60, Math.pow(2, next.tries)) * 60 * 1000;
+          }
+          return save([next]);
+        }, function (err) {
+          stop = true;
+          return save([Object.assign({}, row, { lastError: String((err && err.message) || err), nextAt: Date.now() + 2 * 60 * 1000 })]);
+        });
+      });
+    });
+    return chain.then(function () { syncing = false; }, function () { syncing = false; });
+  };
+
+  /* Reintentar ya, sin esperar. */
+  C.fintrackRetry = function () {
+    var rows = C.data.outbox.filter(function (o) { return o.status === 'pendiente' && o.nextAt > Date.now(); })
+      .map(function (o) { return Object.assign({}, o, { nextAt: 0 }); });
+    return save(rows).then(C.fintrackSync);
+  };
+
+  C.fintrackState = function () {
+    if (!C.isDesktop()) return Promise.resolve({ tiene_clave: false, conectado: false });
+    return invoke('fintrack_estado');
+  };
+
+  C.fintrackNewKey = function () {
+    var abc = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+    var b = new Uint8Array(48);
+    window.crypto.getRandomValues(b);
+    return Array.prototype.map.call(b, function (x) { return abc[x % abc.length]; }).join('');
+  };
+
+  C.fintrackSaveKey = function (key) { return invoke('fintrack_guardar_clave', { clave: key }); };
+
+  /* Código de FinTrack: FT1.<base64url de {"u": dirección, "c": código, "k": clave pública opcional}> */
+  C.fintrackParseCode = function (text) {
+    var t = String(text || '').trim();
+    if (t.indexOf('FT1.') !== 0) throw new Error('El código debe empezar con FT1. Cópialo completo desde FinTrack.');
+    var b64 = t.slice(4).replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
+    var data;
+    try { data = JSON.parse(decodeURIComponent(escape(atob(b64)))); } catch (e) { throw new Error('El código de FinTrack está incompleto o dañado.'); }
+    if (!data || !/^https:\/\//.test(String(data.u || '')) || !/^[0-9a-f]{64}$/.test(String(data.c || ''))) throw new Error('El código de FinTrack no es válido.');
+    return { base: String(data.u), code: String(data.c), apikey: data.k ? String(data.k) : null };
+  };
+
+  C.fintrackConnect = function (codeText) {
+    if (!C.isAdmin()) return Promise.reject(new Error('Solo el administrador puede conectar FinTrack.'));
+    var parsed = C.fintrackParseCode(codeText);
+    var s = JSON.parse(JSON.stringify(C.settings));
+    s.fintrack = Object.assign({ sourceUserId: C.uuid(), currency: 'USD' }, s.fintrack || {});
+    var body = JSON.stringify({ action: 'redeem', source_app: 'cobro', code: parsed.code, source_user_id: s.fintrack.sourceUserId, currency: s.fintrack.currency });
+    return invoke('fintrack_vincular', { base: parsed.base, apikey: parsed.apikey, cuerpo: body }).then(function (r) {
+      var data = null;
+      try { data = JSON.parse(r.body || 'null'); } catch (e) { data = null; }
+      if (r.status !== 200) throw new Error((data && data.error) || ('FinTrack respondió ' + r.status + '.'));
+      if (!data || data.source_app !== 'cobro' || !UUID.test(String(data.binding_id || '')) || data.currency !== s.fintrack.currency) {
+        throw new Error('FinTrack respondió algo inesperado; no se guardó la conexión.');
+      }
+      s.fintrack.bindingId = data.binding_id;
+      s.fintrack.destinationUserId = data.destination_user_id || '';
+      s.fintrack.enabled = true;
+      s.fintrack.connectedAt = Date.now();
+      s.fintrack.since = C.today();
+      return C.commit({ put: { kv: [{ key: 'settings', value: s }], audit: [C.auditRow('FinTrack', 'Cobro conectado con FinTrack')] } });
+    });
+  };
+
+  C.fintrackDisconnect = function () {
+    var s = JSON.parse(JSON.stringify(C.settings));
+    s.fintrack = Object.assign({}, s.fintrack || {}, { enabled: false, bindingId: '' });
+    var cancel = C.data.outbox.filter(function (o) { return o.status === 'pendiente'; })
+      .map(function (o) { return Object.assign({}, o, { status: 'cancelado', lastError: 'Se desconectó FinTrack antes de enviarlo' }); });
+    var put = { kv: [{ key: 'settings', value: s }], audit: [C.auditRow('FinTrack', 'Cobro desconectado de FinTrack')] };
+    if (cancel.length) put.outbox = cancel;
+    return (C.isDesktop() ? invoke('fintrack_olvidar') : Promise.resolve()).then(function () { return C.commit({ put: put }); });
+  };
+
+  /* Revisa la cola al abrir, cada 2 minutos y cuando vuelve internet. */
+  setInterval(function () { C.fintrackSync(); }, 2 * 60 * 1000);
+  window.addEventListener('online', function () { C.fintrackSync(); });
+})();

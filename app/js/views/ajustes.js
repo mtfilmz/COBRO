@@ -3,7 +3,7 @@
   'use strict';
   var C = window.Cobro;
   var esc = C.esc;
-  var TABS = [['negocio', 'Negocio'], ['apariencia', 'Apariencia'], ['usuarios', 'Usuarios'], ['facturacion', 'Facturación'], ['datos', 'Datos y respaldo']];
+  var TABS = [['negocio', 'Negocio'], ['apariencia', 'Apariencia'], ['usuarios', 'Usuarios'], ['facturacion', 'Facturación'], ['fintrack', 'FinTrack'], ['datos', 'Datos y respaldo']];
   var PERMS = [
     ['crear', 'Crear facturas', 'Incluye cobrar al momento de crearla', false],
     ['clientes', 'Ver y agregar clientes', 'Necesario para buscar clientes al facturar', false],
@@ -107,6 +107,56 @@
       }).join('') + '</div>' : '<p class="muted small">Todavía no has importado historial.</p>') + '</section>';
   }
 
+  function fintrack() {
+    var f = C.settings.fintrack || {};
+    var on = C.fintrackConnected();
+    var rows = C.data.outbox.slice().sort(function (a, b) { return b.createdAt - a.createdAt; });
+    var count = function (s) { return rows.filter(function (o) { return o.status === s; }).length; };
+    var problems = rows.filter(function (o) { return o.status === 'conflicto' || o.status === 'rechazado' || (o.status === 'pendiente' && o.lastError); }).length;
+    var html = '<section class="card pad stack"><div class="card-head flat"><h2 class="h2">FinTrack</h2><span class="pill ' + (on ? 'ok' : 'void') + '">' + (on ? 'Conectado' : 'Sin conectar') + '</span></div>' +
+      '<p class="small muted">Cada pago nuevo que registres en Cobro llega a FinTrack como ingreso, con su categoría: Ventas, Servicios o Reparaciones. Sin internet, los pagos esperan y se envían solos al volver la conexión. El historial importado de Factura no se envía.</p>';
+    if (!C.isDesktop()) return html + '<p class="notice">' + C.icon('info', 16) + 'La conexión con FinTrack funciona en el programa de Windows.</p></section>';
+    if (on) {
+      html += '<div class="kpis"><div class="card kpi"><span class="muted">Enviados</span><span class="amount-md">' + count('enviado') + '</span></div>' +
+        '<div class="card kpi"><span class="muted">Pendientes</span><span class="amount-md">' + count('pendiente') + '</span></div>' +
+        '<div class="card kpi"><span class="muted">Con problema</span><span class="amount-md' + (problems ? ' pend-text' : '') + '">' + problems + '</span></div></div>' +
+        '<p class="small muted">Conectado desde el ' + esc(C.fmtDate(f.since)) + ' · Moneda ' + esc(f.currency || 'USD') + '</p>' +
+        '<div class="actions-left"><button type="button" class="btn" id="ft-sync">' + C.icon('refresh', 16) + 'Enviar pendientes ahora</button>' +
+        '<button type="button" class="btn danger-text" id="ft-off">Desconectar</button></div></section>';
+    } else {
+      html += '<div class="ft-step"><span class="step-dot">1</span><div class="stack-sm"><span class="strong">Clave de conexión</span>' +
+        '<span class="small muted">Es una clave privada solo para Cobro. Se guarda en este equipo y la pegas también en FinTrack (en Lovable) cuando te la pida como COBRO_PAYMENT_SHARED_SECRET.</span>' +
+        '<span class="small" id="ft-key-state">Revisando…</span>' +
+        '<div class="actions-left"><button type="button" class="btn sm" id="ft-new-key">Crear clave nueva</button><button type="button" class="btn sm" id="ft-paste-key">Ya tengo una clave</button></div></div></div>' +
+        '<div class="ft-step"><span class="step-dot">2</span><div class="stack-sm"><span class="strong">Código de FinTrack</span>' +
+        '<span class="small muted">En FinTrack: Negocio › Pagos de talleres conectados › Cobro › Generar código. Dura 10 minutos y sirve una sola vez.</span>' +
+        '<div class="code-row"><input class="input" id="ft-code" placeholder="FT1.…" autocomplete="off" aria-label="Código de FinTrack"><button type="button" class="btn primary" id="ft-connect">Conectar</button></div></div></div></section>';
+    }
+    if (rows.length) {
+      html += '<section class="card list-card"><div class="card-head"><h2 class="h2">Últimos pagos para FinTrack</h2></div><div class="rows">' +
+        rows.slice(0, 15).map(function (o) {
+          return '<a class="row" href="#/factura/' + esc(o.invoiceId) + '"><span class="row-main"><span class="strong">' + esc(o.number) + ' · ' + C.money(o.amount) + '</span>' +
+            (o.lastError && o.status !== 'enviado' ? '<span class="small muted">' + esc(o.lastError) + '</span>' : '<span class="small muted">' + esc(C.stamp(o.sentAt || o.createdAt)) + '</span>') + '</span>' +
+            '<span class="pill ' + (C.FT_CLASS[o.status] || 'void') + '">' + esc(C.FT_LABEL[o.status] || o.status) + '</span></a>';
+        }).join('') + '</div></section>';
+    }
+    return html;
+  }
+
+  function showKey(key) {
+    return C.modal({
+      title: 'Clave de conexión con FinTrack', okLabel: 'Ya la copié, guardar', cancelLabel: 'Cancelar',
+      html: '<p class="muted">Cópiala ahora y pégala en FinTrack (en Lovable) cuando pida <strong>COBRO_PAYMENT_SHARED_SECRET</strong>. Aquí no se vuelve a mostrar. No la compartas por chat ni por mensaje.</p>' +
+        '<p class="recovery-code key">' + esc(key) + '</p><button type="button" class="btn sm" id="copy-key">Copiar clave</button>',
+      onMount: function (dlg) {
+        dlg.querySelector('#copy-key').addEventListener('click', function () {
+          try { navigator.clipboard.writeText(key); C.toast('Clave copiada.'); } catch (e) { C.toast('Cópiala a mano.', 'error'); }
+        });
+      },
+      onOk: function () { return C.fintrackSaveKey(key).then(function () { C.toast('Clave guardada en este equipo.'); return true; }); }
+    });
+  }
+
   function editUser(u) {
     var isNew = !u;
     u = u || { role: 'empleado', email: 'supermobilepr+empleado@gmail.com', permissions: { crear: true, clientes: true, pagos: false }, status: 'activo' };
@@ -135,7 +185,7 @@
     allowed: function () { return C.isAdmin(); },
     render: function (tab) {
       tab = tab || 'negocio';
-      var body = { negocio: negocio, apariencia: apariencia, usuarios: usuarios, facturacion: facturacion, datos: datos }[tab] || negocio;
+      var body = { negocio: negocio, apariencia: apariencia, usuarios: usuarios, facturacion: facturacion, fintrack: fintrack, datos: datos }[tab] || negocio;
       return '<header class="page-head"><div><h1>Ajustes</h1></div></header>' +
         '<nav class="tabs" aria-label="Secciones de ajustes">' + TABS.map(function (t) {
           return '<a href="#/ajustes/' + t[0] + '" class="tab' + (tab === t[0] ? ' on' : '') + '"' + (tab === t[0] ? ' aria-current="page"' : '') + '>' + t[1] + '</a>';
@@ -173,6 +223,38 @@
         b.addEventListener('click', function () {
           var u = C.data.users.find(function (x) { return x.id === b.getAttribute('data-edit-user'); });
           editUser(u).then(function (ok) { if (ok) C.render(); });
+        });
+      });
+      var ks = root.querySelector('#ft-key-state');
+      if (ks) C.fintrackState().then(function (st) {
+        ks.innerHTML = st.tiene_clave ? '<span class="ok-text">' + C.icon('check', 14, 2.5) + ' Clave guardada en este equipo</span>' : '<span class="pend-text">Falta crear la clave.</span>';
+      }).catch(function () { ks.textContent = ''; });
+      var nk = root.querySelector('#ft-new-key');
+      if (nk) nk.addEventListener('click', function () {
+        C.fintrackState().then(function (st) {
+          return st.tiene_clave ? C.confirm('Crear clave nueva', 'Ya hay una clave guardada. Si creas otra, también tendrás que cambiarla en FinTrack.', 'Crear clave nueva', true) : true;
+        }).then(function (ok) { if (ok) return showKey(C.fintrackNewKey()); }).then(function (done) { if (done) C.render(); }).catch(C.fail);
+      });
+      var pk = root.querySelector('#ft-paste-key');
+      if (pk) pk.addEventListener('click', function () {
+        C.modal({
+          title: 'Pegar clave de conexión', okLabel: 'Guardar clave',
+          html: '<label class="field">Clave (la misma que pusiste en FinTrack)<input class="input" type="password" name="key" autocomplete="off" autofocus></label>',
+          onOk: function (dlg) { return C.fintrackSaveKey(dlg.querySelector('[name=key]').value).then(function () { C.toast('Clave guardada en este equipo.'); return true; }); }
+        }).then(function (ok) { if (ok) C.render(); });
+      });
+      var fc = root.querySelector('#ft-connect');
+      if (fc) fc.addEventListener('click', function () {
+        fc.disabled = true;
+        C.fintrackConnect(root.querySelector('#ft-code').value).then(function () { C.toast('Cobro quedó conectado con FinTrack.'); C.render(); })
+          .catch(function (e) { fc.disabled = false; C.fail(e); });
+      });
+      var fs = root.querySelector('#ft-sync');
+      if (fs) fs.addEventListener('click', function () { fs.disabled = true; C.fintrackRetry().then(function () { C.toast('Listo.'); C.render(); }).catch(C.fail); });
+      var fo = root.querySelector('#ft-off');
+      if (fo) fo.addEventListener('click', function () {
+        C.confirm('Desconectar FinTrack', 'Los pagos nuevos dejarán de enviarse. Lo que ya está en FinTrack no se borra. Desconecta también a Cobro en FinTrack.', 'Desconectar', true).then(function (ok) {
+          if (ok) C.fintrackDisconnect().then(function () { C.toast('FinTrack desconectado.'); C.render(); }).catch(C.fail);
         });
       });
       var nc = root.querySelector('#new-code');

@@ -81,7 +81,10 @@
         (v.balance > 0 && !inv.voided && C.can('pagos') ? '<button type="button" class="btn primary block lg" id="pay">Registrar pago</button>' : '') +
         (v.balance > 0 && !inv.voided && !C.can('pagos') ? '<p class="small muted">Para cobrar el saldo pide al administrador el permiso "Registrar pagos".</p>' : '') +
         (pays.length ? '<div class="pays">' + pays.map(function (p) {
-          return '<div class="pay-row"><span><span class="strong">' + C.money(p.amount) + '</span> <span class="muted">' + esc(p.method) + '</span></span><span class="small muted">' + esc(C.fmtDate(p.date)) + '</span></div>';
+          var ft = C.fintrackRowFor ? C.fintrackRowFor(p.id) : null;
+          return '<div class="pay-row"><span><span class="strong">' + C.money(p.amount) + '</span> <span class="muted">' + esc(p.method) + '</span>' +
+            (ft ? '<span class="small block ' + (ft.status === 'enviado' ? 'ok-text' : ft.status === 'pendiente' ? 'pend-text' : 'muted') + '" title="' + esc(ft.lastError || '') + '">' + esc(C.FT_LABEL[ft.status] || ft.status) + '</span>' : '') +
+            '</span><span class="small muted">' + esc(C.fmtDate(p.date)) + '</span></div>';
         }).join('') + '</div>' : '') + '</section>';
 
       if (inv.type === 'reparacion' && !inv.voided) {
@@ -147,6 +150,7 @@
         C.modal({
           title: 'Anular ' + inv.number, okLabel: 'Anular factura', okKind: 'danger',
           html: '<p class="muted">La factura no se borra: queda visible, tachada y fuera de los totales.' + (v.paid > 0 ? ' Tiene pagos por ' + C.money(v.paid) + '; devuélvelos al cliente si corresponde.' : '') + '</p>' +
+            (C.data.outbox.some(function (o) { return o.invoiceId === inv.id && o.status === 'enviado'; }) ? '<p class="notice">' + C.icon('info', 16) + 'Los pagos que ya se enviaron a FinTrack se quedan allá. Si corresponde, bórralos en FinTrack.</p>' : '') +
             '<label class="field">Motivo (obligatorio)<textarea class="input" name="reason" rows="3" autofocus></textarea></label>',
           onOk: function (dlg) {
             var reason = dlg.querySelector('[name=reason]').value.trim();

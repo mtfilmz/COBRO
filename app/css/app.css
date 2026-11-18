@@ -279,6 +279,10 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.45; resize: ve
 .update-notes { padding: 12px 14px; border-radius: 10px; background: var(--surface2); border: 1px solid var(--border); font-size: 13.5px; color: var(--body); max-height: 220px; overflow: auto; }
 .bar.big { height: 10px; border-radius: 5px; }
 .bar.big span { height: 10px; transition: width .2s; }
+.ft-step { display: flex; gap: 14px; align-items: flex-start; padding: 14px 0; border-top: 1px solid var(--line); }
+.code-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.code-row .input { flex: 1 1 260px; font-family: ui-monospace, Consolas, monospace; }
+.recovery-code.key { font-size: 15px; letter-spacing: .02em; word-break: break-all; font-family: ui-monospace, Consolas, monospace; }
 .recovery-code { font-size: 28px; font-weight: 600; letter-spacing: .12em; text-align: center; padding: 14px; border-radius: 10px; background: var(--surface2); border: 1px dashed var(--input-border); color: var(--strong); font-variant-numeric: tabular-nums; }
 .input.pin { font-size: 22px; letter-spacing: .4em; text-align: center; height: 52px; }
 

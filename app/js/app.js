@@ -38,5 +38,6 @@
     resetIdle();
     autoBackup();
     setInterval(autoBackup, 6 * 3600 * 1000);
+    setTimeout(function () { C.fintrackSync(); }, 4000);
   }).catch(fatal);
 })();

@@ -3,7 +3,18 @@
   'use strict';
   var C = (window.Cobro = window.Cobro || {});
 
-  C.VERSION = '0.2.0';
+  C.VERSION = '0.3.0';
+
+  /* Identificador único universal (lo exige FinTrack para los pagos). */
+  C.uuid = function () {
+    if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID();
+    var b = new Uint8Array(16);
+    if (window.crypto && window.crypto.getRandomValues) window.crypto.getRandomValues(b);
+    else for (var i = 0; i < 16; i++) b[i] = Math.floor(Math.random() * 256);
+    b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80;
+    var h = Array.prototype.map.call(b, function (x) { return ('0' + x.toString(16)).slice(-2); }).join('');
+    return h.slice(0, 8) + '-' + h.slice(8, 12) + '-' + h.slice(12, 16) + '-' + h.slice(16, 20) + '-' + h.slice(20);
+  };
 
   C.uid = function (prefix) {
     return (prefix || 'id') + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
