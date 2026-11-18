@@ -3,7 +3,6 @@ name: Crear instalador de Windows
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
@@ -36,22 +35,6 @@ jobs:
           New-Item -ItemType Directory -Force -Path app/fonts | Out-Null
           Invoke-WebRequest -Uri "https://github.com/google/fonts/raw/main/ofl/rubik/Rubik%5Bwght%5D.ttf" -OutFile app/fonts/Rubik.ttf
 
-      - name: Instalar Tauri
-        run: npm install
-
-      - name: Crear los íconos a partir de app/icons/app-icon.png
-        run: npx tauri icon app/icons/app-icon.png
-
-      - name: Crear el instalador .exe
-        run: npx tauri build
-
-      - name: Guardar el instalador para descargarlo
-        uses: actions/upload-artifact@v4
-        with:
-          name: Cobro-Setup
-          path: src-tauri/target/release/bundle/nsis/*.exe
-          if-no-files-found: error
-
       - name: Leer la versión
         id: ver
         shell: pwsh
@@ -59,13 +42,61 @@ jobs:
           $v = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
           "version=$v" >> $env:GITHUB_OUTPUT
 
-      - name: Publicar el instalador en Releases (enlace de descarga directo)
+      - name: Instalar Tauri
+        run: npm install
+
+      - name: Crear los íconos a partir de app/icons/app-icon.png
+        run: npx tauri icon app/icons/app-icon.png
+
+      - name: Crear y firmar el instalador .exe
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        run: npx tauri build
+
+      - name: Comprobar la firma de la actualización
+        shell: pwsh
+        run: |
+          python -m pip install --quiet cryptography
+          python .github/verificar_firma.py
+
+      - name: Crear latest.json (lo lee la app para saber si hay versión nueva)
+        shell: pwsh
+        run: |
+          $v = "${{ steps.ver.outputs.version }}"
+          $exe = Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          $sig = (Get-Content "$($exe.FullName).sig" -Raw).Trim()
+          $notes = (Get-Content .github/notas-version.md -Raw).Trim()
+          $data = [ordered]@{
+            version   = $v
+            notes     = $notes
+            pub_date  = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            platforms = [ordered]@{
+              "windows-x86_64" = [ordered]@{
+                signature = $sig
+                url       = "https://github.com/${{ github.repository }}/releases/download/v$v/$($exe.Name)"
+              }
+            }
+          }
+          $data | ConvertTo-Json -Depth 6 | Set-Content -Path latest.json -Encoding utf8NoBOM
+          Get-Content latest.json
+
+      - name: Guardar el instalador para descargarlo
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cobro-Setup
+          path: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            latest.json
+          if-no-files-found: error
+
+      - name: Publicar en Releases (descarga directa y actualizaciones)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.ver.outputs.version }}
           name: Cobro ${{ steps.ver.outputs.version }}
-          body: |
-            Instalador de Cobro para Windows 10 y 11.
-            Descarga el archivo .exe y ábrelo. Si Windows muestra "Windows protegió su PC", toca "Más información" y luego "Ejecutar de todas formas".
-          files: src-tauri/target/release/bundle/nsis/*.exe
+          body_path: .github/notas-version.md
+          files: |
+            src-tauri/target/release/bundle/nsis/*-setup.exe
+            latest.json
           make_latest: true

@@ -92,7 +92,10 @@
 
   function datos() {
     var batches = C.data.batches.slice().sort(function (a, b) { return b.at - a.at; });
-    return '<section class="card pad stack"><h2 class="h2">Respaldo</h2>' +
+    return '<section class="card pad stack"><div class="card-head flat"><h2 class="h2">Versión y actualizaciones</h2><span class="pill void">Versión ' + esc(C.VERSION) + '</span></div>' +
+      '<p class="small muted">' + (C.isDesktop() ? 'Cuando hay una versión nueva, Cobro te avisa al entrar como administrador y se instala solo si la autorizas. Antes guarda un respaldo de tus datos.' : 'Las actualizaciones automáticas funcionan en el programa de Windows.') + '</p>' +
+      (C.isDesktop() ? '<div class="actions-left"><button type="button" class="btn" id="check-upd">' + C.icon('refresh', 16) + 'Buscar actualizaciones</button></div>' : '') + '</section>' +
+      '<section class="card pad stack"><h2 class="h2">Respaldo</h2>' +
       '<p class="small muted">Todo está guardado en este equipo. ' + (C.isDesktop() ? 'El programa guarda un respaldo automático cada día en Documentos › Cobro › Respaldos. ' : '') + 'Copia los respaldos de vez en cuando a una memoria USB o a la nube.</p>' +
       '<div class="actions-left"><button type="button" class="btn primary" id="backup">' + C.icon('download', 16) + 'Descargar respaldo completo (.json)</button>' +
       '<label class="btn">' + C.icon('undo', 16) + 'Recuperar desde un respaldo<input type="file" accept=".json,application/json" id="restore" hidden></label></div>' +
@@ -226,6 +229,8 @@
           .then(function () { C.toast('Facturación guardada.'); C.render(); }).catch(C.fail);
       });
 
+      var cu = root.querySelector('#check-upd');
+      if (cu) cu.addEventListener('click', function () { C.checkUpdates(true); });
       var bk = root.querySelector('#backup');
       if (bk) {
         bk.addEventListener('click', function () {

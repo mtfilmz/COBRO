@@ -276,6 +276,9 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.45; resize: ve
 .who-item:has(input:disabled) { opacity: .55; cursor: default; }
 .who-item input { accent-color: var(--primary); width: 18px; height: 18px; }
 .who-text { display: flex; flex-direction: column; min-width: 0; }
+.update-notes { padding: 12px 14px; border-radius: 10px; background: var(--surface2); border: 1px solid var(--border); font-size: 13.5px; color: var(--body); max-height: 220px; overflow: auto; }
+.bar.big { height: 10px; border-radius: 5px; }
+.bar.big span { height: 10px; transition: width .2s; }
 .recovery-code { font-size: 28px; font-weight: 600; letter-spacing: .12em; text-align: center; padding: 14px; border-radius: 10px; background: var(--surface2); border: 1px dashed var(--input-border); color: var(--strong); font-variant-numeric: tabular-nums; }
 .input.pin { font-size: 22px; letter-spacing: .4em; text-align: center; height: 52px; }
 

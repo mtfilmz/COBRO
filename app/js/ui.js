@@ -169,6 +169,7 @@
     if (view.mount) { try { view.mount(main, r.param, r.query); } catch (err) { console.error(err); C.fail(err); } }
     main.scrollTop = 0;
     document.title = (view.title ? (typeof view.title === 'function' ? view.title(r.param) : view.title) + ' · ' : '') + 'Cobro';
+    if (C.afterRender) C.afterRender();
   };
 
   window.addEventListener('hashchange', function () { C.render(); window.scrollTo(0, 0); });

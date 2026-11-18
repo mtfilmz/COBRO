@@ -68,7 +68,7 @@
         '<label class="field">PIN<input class="input pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="current-password" autofocus required></label>' +
         '<button class="btn primary block" type="submit">Entrar</button>' +
         '<button type="button" class="btn sm" id="forgot">¿Olvidaste el PIN del administrador?</button>' +
-        '<p class="small muted center">' + C.icon('drive', 14) + ' Funciona sin internet. Los datos están guardados en este equipo.</p>' +
+        '<p class="small muted center">' + C.icon('drive', 14) + ' Funciona sin internet. Los datos están guardados en este equipo. · Versión ' + esc(C.VERSION) + '</p>' +
         '</form></div>';
     },
     mount: function (root) {

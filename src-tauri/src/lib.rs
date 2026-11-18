@@ -27,6 +27,13 @@ fn guardar_archivo(app: tauri::AppHandle, carpeta: String, nombre: String, conte
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_process::init())
+        .setup(|app| {
+            // Actualizaciones firmadas desde GitHub Releases; la app pide autorización antes de instalar.
+            #[cfg(desktop)]
+            app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![guardar_archivo])
         .run(tauri::generate_context!())
         .expect("no se pudo iniciar Cobro");

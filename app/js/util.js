@@ -3,7 +3,7 @@
   'use strict';
   var C = (window.Cobro = window.Cobro || {});
 
-  C.VERSION = '0.1.0';
+  C.VERSION = '0.2.0';
 
   C.uid = function (prefix) {
     return (prefix || 'id') + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
@@ -143,7 +143,8 @@
     info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
     drive: '<rect x="3" y="13" width="18" height="7" rx="2"/><path d="M5 13 7.5 5h9L19 13M7 16.5h.01"/>',
     menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
-    undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>'
+    undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>',
+    refresh: '<path d="M20 11a8 8 0 0 0-14.6-4.5L4 8"/><path d="M4 3v5h5"/><path d="M4 13a8 8 0 0 0 14.6 4.5L20 16"/><path d="M20 21v-5h-5"/>'
   };
   C.icon = function (name, size, sw) {
     size = size || 18;

@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Cobro",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "pr.supermobile.cobro",
   "build": {
     "frontendDist": "../app"
@@ -26,7 +26,9 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": [
+      "nsis"
+    ],
     "publisher": "Super Mobile Tech Repair",
     "shortDescription": "Facturación de ventas, servicios y reparaciones",
     "longDescription": "Cobro: facturación minimalista de Super Mobile Tech Repair que funciona sin internet.",
@@ -40,6 +42,18 @@
     "windows": {
       "nsis": {
         "installMode": "currentUser"
+      }
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM1NjkzODMzRjZGRTQ2RTkKUldUcFJ2NzJNemhweFpoeVlyYkMzMzExMVExYlNCQTBkcDdlbG92cFJpOS9NR0VRb2ZDL0pDd2sK",
+      "endpoints": [
+        "https://github.com/mtfilmz/COBRO/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
       }
     }
   }
