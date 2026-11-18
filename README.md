@@ -1,0 +1,56 @@
+# Cobro · Super Mobile Tech Repair
+
+Programa de facturación para **Ventas, Servicios y Reparaciones**. Funciona **sin internet**: todos los datos se guardan en la computadora.
+
+Versión de prueba 0.1.0.
+
+## Qué trae
+
+- Entrada con PIN: un **administrador** (supermobilepr@gmail.com) y empleados con su propio PIN.
+- **Inicio del administrador:** facturado, cobrado, por cobrar, totales por tipo y botón **Ocultar montos**.
+- **Inicio del empleado:** sin balance ni totales. Accesos rápidos, equipos en el taller y facturas recientes.
+- **Nueva factura:** Venta, Servicio o Reparación. En reparaciones: equipo, "IMEI, número de serie o modelo", hasta 3 fotos, falla, accesorios, garantía y estado del equipo. Numeración automática (VEN-00001, SER-00001, REP-00001).
+- **Detalle de factura:** hoja blanca para el cliente, impresión o PDF ("Microsoft Print to PDF"), WhatsApp, pagos parciales, estado del equipo, fotos y actividad. Las facturas no se borran, se anulan con motivo.
+- **Clientes, Catálogo y Reportes** (los reportes son solo para el administrador).
+- **5 temas globales:** Claro, Oscuro, Negro, Azul marino y Automático. La factura del cliente siempre sale en blanco.
+- **Importar historial de Factura:** respaldo `.json` o CSV. Conserva los números originales, sugiere el tipo de cada factura y el lote se puede revertir.
+- **Respaldo:** descarga o recupera todo en `.json`. Como programa de Windows, guarda además un respaldo automático diario en `Documentos\Cobro\Respaldos`.
+
+## Probarlo ya, sin instalar nada
+
+Abre `app/index.html` con Edge o Chrome. Funciona sin internet.
+
+Lo que hagas así se guarda en el navegador, separado del programa .exe. Para pasarlo al .exe usa **Ajustes › Datos y respaldo**.
+
+## Crear el instalador `Cobro-Setup.exe` con GitHub (gratis)
+
+1. Entra a github.com y crea un repositorio nuevo, por ejemplo `cobro` (puede ser privado).
+2. Sube **todo el contenido** de esta carpeta, incluida la carpeta `.github`. Puedes usar "Add file › Upload files" y arrastrar todo.
+3. GitHub empieza solo a armar el programa. Míralo en la pestaña **Actions** ("Crear instalador de Windows"). Tarda unos 10 a 15 minutos la primera vez.
+4. Cuando termine con ✓, abre esa ejecución y descarga **Cobro-Setup** en "Artifacts". Es un .zip que trae el instalador `.exe`.
+5. Ejecuta el instalador. La primera vez Windows puede mostrar **"Windows protegió su PC"** porque el programa no tiene firma comercial: toca **Más información › Ejecutar de todas formas**.
+
+Para publicar una versión con su propio enlace de descarga, crea una etiqueta `v0.1.0` en GitHub. El instalador queda adjunto en **Releases**.
+
+Si un paso falla, abre la ejecución en **Actions**, copia el mensaje de error y compártelo para corregirlo.
+
+## Dónde quedan los datos
+
+- **Programa de Windows:** en la carpeta de datos del usuario de Windows (`%LOCALAPPDATA%\pr.supermobile.cobro`). Los respaldos y exportaciones van a `Documentos\Cobro`.
+- Si olvidas el PIN del administrador: en la pantalla de entrada usa **¿Olvidaste el PIN del administrador?** con el código de recuperación que se mostró al configurar. Puedes crear uno nuevo en **Ajustes › Usuarios**.
+
+## Siguiente fase (pendiente)
+
+- Copia en la nube (Supabase) y sincronización entre varios dispositivos, con los mismos correos.
+- Conexión con Balance Board.
+
+## Estructura
+
+```
+app/            La aplicación (HTML, CSS y JavaScript sin dependencias)
+  js/store.js   Base de datos local (IndexedDB) y reglas del negocio
+  js/import.js  Importación del historial de Factura
+  js/views/     Pantallas
+src-tauri/      Envoltura de Windows (Tauri 2)
+.github/        Proceso que arma el .exe en GitHub
+```

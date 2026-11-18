@@ -1,0 +1,14 @@
+{
+  "name": "cobro",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cobro · facturación de ventas, servicios y reparaciones de Super Mobile Tech Repair",
+  "scripts": {
+    "tauri": "tauri",
+    "icono": "tauri icon app/icons/app-icon.png",
+    "exe": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}
