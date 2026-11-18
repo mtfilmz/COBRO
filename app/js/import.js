@@ -3,11 +3,21 @@
   'use strict';
   var C = (window.Cobro = window.Cobro || {});
 
-  var REPAIR = ['reparacion', 'reparar', 'cambio de', 'pantalla', 'bateria', 'puerto', 'conector', 'hdmi', 'placa', 'ventilador', 'flex', 'camara', 'boton'];
-  var SERVICE = ['limpieza', 'diagnostico', 'instalacion', 'servicio', 'mantenimiento', 'configuracion', 'revision', 'pasta termica', 'mano de obra'];
+  /* Palabras para adivinar el tipo cuando Factura no lo dice. Se revisa línea por línea. */
+  var REPAIR = ['reparacion', 'reparar', 'cambio de', 'reemplazo', 'remplazo', 'pantalla', 'psntalla', 'lcd', 'touch', 'digitalizador',
+    'back glass', 'tapa trasera', 'tapa tracera', 'flip de tapa', 'frame', 'franme', 'bateria', 'puerto', 'conector', 'hdmi', 'placa',
+    'ventilador', 'abanico', 'cooler', 'flex', 'camara', 'lente', 'boton', 'joystick', 'jostik', 'disco duro', 'ssd', 'teclado',
+    'pemic', 'pmic', 'modulo', 'liquid metal'];
+  var SERVICE = ['limpieza', 'diagnosti', 'chequeo', 'verificacion', 'revision', 'instalacion', 'servicio', 'mantenimiento', 'mantemibiento',
+    'configuracion', 'pasta termica', 'mano de obra', 'desbloque', 'frp', 'icloud', 'cuenta de google', 'cuenta google', 'borrado',
+    'borrar', 'activacion', 'actualizacion', 'restauracion', 'sistema operativo', 'systema operativo', 'windows', 'office',
+    'paquete de oficina', 'garantia'];
+  var STRONG = ['reparacion', 'reparar', 'cambio de', 'reemplazo', 'remplazo', 'hausing', 'housing'];
+  var SYMPTOM = ['no enciende', 'no carga', 'no conecta', 'no imagen', 'no da imagen', 'no funciona', 'se apaga', 'dano', 'mojado'];
+  var SALE = [' case ', ' cover ', ' coves ', 'protector', 'cargador', 'charger', ' cable ', ' sim '];
 
   function has(text, words) {
-    var t = C.norm(text);
+    var t = ' ' + C.norm(text).replace(/[^a-z0-9ñ]+/g, ' ') + ' ';
     return words.some(function (w) { return t.indexOf(w) >= 0; });
   }
 
@@ -20,20 +30,24 @@
     return '';
   }
 
-  /* Regla de clasificación: artículos "venta" → Venta; "servicio" con palabras de reparación → Reparación; si no → Servicio. */
+  function lineText(l) { return l.name + ' ' + (l.description || ''); }
+  /* Una línea es reparación si nombra una pieza o arreglo y no es un accesorio que se vende (case, protector, cargador…). */
+  function lineIsRepair(l) { var t = lineText(l); return has(t, STRONG) || (has(t, REPAIR) && !has(l.name, SALE)); }
+
+  /* Regla de clasificación: artículos "venta" → Venta; si alguna línea es de reparación → Reparación;
+     si alguna es de servicio (mantenimiento, diagnóstico, desbloqueo, instalación…) → Servicio;
+     si solo describe una falla ("no enciende") → Reparación; si no → Venta. */
   C.classify = function (lines, explicit) {
     var forced = typeFromText(explicit);
     if (forced) return forced;
-    var known = lines.filter(function (l) { return l.type; });
-    if (known.length) {
-      var services = lines.filter(function (l) { return l.type !== 'venta'; });
-      if (!services.length) return 'venta';
-      return services.some(function (l) { return has(l.name + ' ' + (l.description || ''), REPAIR); }) ? 'reparacion' : 'servicio';
-    }
-    var text = lines.map(function (l) { return l.name + ' ' + (l.description || ''); }).join(' ');
-    if (has(text, REPAIR) && !has(text, ['protector de pantalla', 'cargador'])) return 'reparacion';
-    if (has(text, SERVICE)) return 'servicio';
-    return 'venta';
+    var pool = lines.some(function (l) { return l.type; })
+      ? lines.filter(function (l) { return l.type !== 'venta'; })
+      : lines;
+    if (!pool.length) return 'venta';
+    if (pool.some(lineIsRepair)) return 'reparacion';
+    if (pool.some(function (l) { return has(lineText(l), SERVICE); })) return 'servicio';
+    if (pool.some(function (l) { return has(lineText(l), SYMPTOM) && !has(l.name, SALE); })) return 'reparacion';
+    return lines.some(function (l) { return l.type; }) ? 'servicio' : 'venta';
   };
 
   C.guessItemType = function (name) { return C.classify([{ name: name }]); };
@@ -147,7 +161,7 @@
         return {
           name: String(l.name || 'Artículo').trim(), description: String(l.description || '').trim(),
           qty: C.num(l.quantity != null ? l.quantity : l.qty) || 1, price: C.num(l.price),
-          tax: C.num(l.tax), discount: C.num(l.discount), type: l.type === 'venta' ? 'venta' : (l.type ? 'servicio' : 'servicio')
+          tax: C.num(l.tax), discount: C.num(l.discount), type: l.type === 'venta' ? 'venta' : (l.type ? 'servicio' : '')
         };
       });
       var subtotal = lines.reduce(function (s, l) { return s + l.qty * l.price; }, 0);

@@ -49,8 +49,9 @@
       '<div class="card kpi"><span class="muted">Pagos</span><span class="amount-md">' + p.payCount + '</span></div>' +
       '<div class="card kpi"><span class="muted">Clientes</span><span class="amount-md">' + (p.clients.length || new Set(fresh.map(function (i) { return C.norm(i.clientName); })).size) + '</span><span class="small muted">Los repetidos se unen</span></div>' +
       '<div class="card kpi"><span class="muted">Catálogo</span><span class="amount-md">' + p.products.length + '</span></div></section>' +
+      '<div class="notice">' + C.icon('info', 16) + '<div>Los pagos de este historial entran como ya cobrados y <strong>no se envían a FinTrack</strong>, porque ya se reportaron. Solo los pagos nuevos que hagas en Cobro llegan a FinTrack.</div></div>' +
       (p.errors.length ? '<div class="notice danger">' + C.icon('info', 16) + '<div>' + p.errors.slice(0, 5).map(esc).join('<br>') + (p.errors.length > 5 ? '<br>…y ' + (p.errors.length - 5) + ' más.' : '') + '</div></div>' : '') +
-      '<section class="card list-card"><div class="card-head"><div><h2 class="h2">Revisa la clasificación</h2><p class="small muted">Sugerida según el tipo de cada artículo en Factura y palabras como «cambio de», «pantalla» o «batería».</p></div>' +
+      '<section class="card list-card"><div class="card-head"><div><h2 class="h2">Revisa la clasificación</h2><p class="small muted">Sugerida según cada artículo: piezas y arreglos (LCD, pantalla, batería, joystick…) → Reparación; mantenimiento, diagnóstico, desbloqueo o instalación → Servicio; lo demás → Venta. Puedes cambiarla aquí antes de importar.</p></div>' +
       '<div class="legend">' + C.TYPE_KEYS.map(function (k) { return '<span><span class="dot ' + C.TYPES[k].cls + '"></span>' + C.TYPES[k].label + ' ' + counts[k] + '</span>'; }).join('') + '</div></div>' +
       '<div class="bulk"><span class="small muted">Cambiar todas las de</span><select class="input sm" id="bulk-from">' + C.TYPE_KEYS.map(function (k) { return '<option value="' + k + '">' + C.TYPES[k].label + '</option>'; }).join('') + '</select>' +
       '<span class="small muted">a</span><select class="input sm" id="bulk-to">' + C.TYPE_KEYS.map(function (k) { return '<option value="' + k + '"' + (k === 'reparacion' ? ' selected' : '') + '>' + C.TYPES[k].label + '</option>'; }).join('') + '</select>' +
@@ -66,6 +67,7 @@
     return steps(3) + '<section class="card pad stack center-block">' + '<span class="big-check">' + C.icon('check', 28, 2.5) + '</span>' +
       '<h2 class="h2">Historial importado</h2><p class="muted">' + b.counts.invoices + ' facturas, ' + b.counts.payments + ' pagos, ' + b.counts.customers + ' clientes nuevos y ' + b.counts.catalog + ' artículos de catálogo.' +
       (b.counts.skipped ? ' Se omitieron ' + b.counts.skipped + ' que ya existían.' : '') + '</p>' +
+      '<p class="small muted">Ninguno de estos pagos se envió a FinTrack.</p>' +
       '<div class="actions-center"><a class="btn primary" href="#/facturas">Ver facturas</a><button type="button" class="btn" id="again">Importar otro archivo</button><a class="btn" href="#/ajustes/datos">Ver lotes importados</a></div></section>';
   }
 

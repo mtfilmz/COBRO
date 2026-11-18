@@ -3,7 +3,7 @@
   'use strict';
   var C = (window.Cobro = window.Cobro || {});
 
-  C.VERSION = '0.3.0';
+  C.VERSION = '0.3.1';
 
   /* Identificador único universal (lo exige FinTrack para los pagos). */
   C.uuid = function () {

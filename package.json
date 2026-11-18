@@ -1,6 +1,6 @@
 {
   "name": "cobro",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "description": "Cobro · facturación de ventas, servicios y reparaciones de Super Mobile Tech Repair",
   "scripts": {
