@@ -1,4 +1,5 @@
-/* Cobro · actualizaciones automáticas con autorización del administrador (solo en el programa de Windows) */
+/* Cobro · actualizaciones con autorización del administrador.
+   Windows: se descarga e instala sola. Android: avisa y baja el APK nuevo para que lo instales. */
 (function () {
   'use strict';
   var C = window.Cobro;
@@ -64,8 +65,41 @@
     return box;
   }
 
+  function newer(a, b) {
+    var x = String(a).split('.').map(Number), y = String(b).split('.').map(Number);
+    for (var i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); }
+    return false;
+  }
+
+  /* Android: lee android.json del último release (versión, enlace al APK y novedades). */
+  function checkAndroid(manual) {
+    if (!C.isAdmin() || busy) return Promise.resolve();
+    if (!navigator.onLine) { if (manual) C.toast('Sin internet. Cobro buscará actualizaciones cuando vuelva la conexión.', 'error'); return Promise.resolve(); }
+    return window.__TAURI__.core.invoke('buscar_version_movil').then(function (txt) {
+      var info = JSON.parse(txt || '{}');
+      if (!info.version || !info.url || !newer(info.version, C.VERSION)) { if (manual) C.toast('Ya tienes la versión más reciente (' + C.VERSION + ').'); return; }
+      if (!manual && postponed === info.version) return;
+      return C.modal({
+        title: 'Hay una versión nueva de Cobro',
+        okLabel: 'Descargar', cancelLabel: 'Más tarde',
+        html: '<p class="muted">Versión instalada: <strong>' + esc(C.VERSION) + '</strong> · Versión nueva: <strong>' + esc(info.version) + '</strong></p>' +
+          notesHtml(info.notes) +
+          '<p class="notice">' + C.icon('info', 16) + 'Se descarga el instalador nuevo. Cuando termine, ábrelo y toca Instalar. Tus facturas, clientes y ajustes se quedan en el teléfono (y en la nube si está conectada).</p>',
+        onOk: function () { return true; }
+      }).then(function (ok) {
+        if (!ok) { postponed = info.version; return; }
+        C.commit({ put: { audit: [C.auditRow('Actualización', 'Descarga de la versión ' + info.version + ' autorizada')] } });
+        C.openExternal(info.url);
+      });
+    }).catch(function (err) {
+      if (manual) C.toast('No se pudo buscar actualizaciones: ' + ((err && err.message) || err), 'error');
+      else console.warn('Actualizaciones: ' + ((err && err.message) || err));
+    });
+  }
+
   /* manual = true cuando el administrador toca "Buscar actualizaciones". */
   C.checkUpdates = function (manual) {
+    if (C.isAndroid()) return checkAndroid(manual);
     var T = api();
     if (!T) { if (manual) C.toast('Las actualizaciones automáticas funcionan en el programa de Windows.', 'error'); return Promise.resolve(); }
     if (!C.isAdmin() || busy) return Promise.resolve();
@@ -95,7 +129,7 @@
 
   /* Revisa al entrar el administrador y luego cada 6 horas mientras la app está abierta. */
   C.afterRender = function () {
-    if (checkedThisSession || !C.isAdmin() || !api()) return;
+    if (checkedThisSession || !C.isAdmin() || !(api() || C.isAndroid())) return;
     checkedThisSession = true;
     setTimeout(function () { C.checkUpdates(false); }, 2500);
     setInterval(function () { if (!document.querySelector('dialog[open]')) C.checkUpdates(false); }, 6 * 3600 * 1000);

@@ -17,7 +17,7 @@
     setTimeout(function () { el.classList.add('out'); }, kind === 'error' ? 5200 : 3200);
     setTimeout(function () { el.remove(); }, kind === 'error' ? 5600 : 3600);
   };
-  C.fail = function (err) { C.toast((err && err.message) || String(err), 'error'); };
+  C.fail = function (err) { if (err && err.cancel) return; C.toast((err && err.message) || String(err), 'error'); };
 
   /* ---------- Ventanas (dialog) ---------- */
   C.modal = function (opts) {

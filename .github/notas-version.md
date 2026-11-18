@@ -1,6 +1,5 @@
-Novedades de Cobro 0.4.0:
-- Copia en la nube: en Ajustes › Nube conectas Cobro con tu cuenta de Factura y se sube una copia de clientes, facturas, pagos, catálogo, fotos y ajustes del negocio.
-- Cobro sigue funcionando sin internet: los cambios esperan en cola y se suben solos al volver la conexión.
-- Puedes usar Cobro en otra computadora con los mismos datos: conecta la nube allí y se baja todo. Gana siempre el cambio más reciente y la numeración nunca se repite.
-- Los pagos que llegan de la nube no se vuelven a enviar a FinTrack.
-- El menú lateral muestra si la nube está al día.
+Novedades de Cobro 0.5.0:
+- Nueva app de Android (APK): la misma Cobro en el teléfono, con la nube y FinTrack.
+- En Android, la factura se guarda como PDF (Guardar PDF) para imprimirla o compartirla; los respaldos se guardan donde elijas (Descargas, Drive).
+- La app de Android avisa cuando hay versión nueva y baja el instalador para que lo instales.
+- La hoja de la factura se ve mejor en pantallas pequeñas.

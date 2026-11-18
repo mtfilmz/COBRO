@@ -24,6 +24,10 @@ fn guardar_archivo(
     if carpeta.is_empty() || nombre.is_empty() || nombre.starts_with('.') {
         return Err("Nombre de archivo no válido.".into());
     }
+    // En Android no hay carpeta Documentos para la app: se usa su carpeta privada (la copia real es la nube).
+    #[cfg(target_os = "android")]
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    #[cfg(not(target_os = "android"))]
     let base = app.path().document_dir().map_err(|e| e.to_string())?;
     let dir = base.join("Cobro").join(carpeta);
     fs::create_dir_all(&dir).map_err(|e| format!("No se pudo crear la carpeta: {e}"))?;
@@ -532,15 +536,40 @@ async fn nube_pedir(
     Ok(Respuesta { status, body })
 }
 
+/// Android: lee android.json del último release (versión nueva, enlace al APK y novedades).
+#[tauri::command]
+async fn buscar_version_movil() -> Result<String, String> {
+    let cli = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::limited(5))
+        .timeout(Duration::from_secs(20))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let r = cli
+        .get("https://github.com/mtfilmz/COBRO/releases/latest/download/android.json")
+        .header("User-Agent", "Cobro")
+        .send()
+        .await
+        .map_err(|e| format!("No se pudo revisar si hay versión nueva: {e}"))?;
+    let status = r.status().as_u16();
+    if status != 200 {
+        return Err(format!("No hay información de versión todavía ({status})."));
+    }
+    r.text().await.map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_process::init())
-        .setup(|app| {
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init());
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_process::init());
+    builder
+        .setup(|_app| {
             // Actualizaciones firmadas desde GitHub Releases; la app pide autorización antes de instalar.
             #[cfg(desktop)]
-            app.handle()
+            _app.handle()
                 .plugin(tauri_plugin_updater::Builder::new().build())?;
             Ok(())
         })
@@ -554,7 +583,8 @@ pub fn run() {
             nube_estado,
             nube_conectar,
             nube_desconectar,
-            nube_pedir
+            nube_pedir,
+            buscar_version_movil
         ])
         .run(tauri::generate_context!())
         .expect("no se pudo iniciar Cobro");

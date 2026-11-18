@@ -47,6 +47,14 @@ Si un paso falla, abre la ejecución en **Actions**, copia el mensaje de error y
 - En otra computadora: instalar Cobro, crear el administrador y conectar la nube. No volver a importar el historial de Factura allí.
 - Los pagos que bajan de la nube no se envían a FinTrack; cada pago lo envía la computadora donde se cobró.
 
+## Android
+
+- El mismo código genera el APK (`Cobro_<versión>_android.apk` en Releases), firmado con la llave del secreto `ANDROID_KEYSTORE`. Todas las versiones deben firmarse con esa misma llave para poder actualizar encima.
+- Instalar: descargar el APK en el teléfono, abrirlo y permitir "Instalar apps desconocidas" para el navegador o Archivos.
+- La factura se guarda como PDF (Guardar PDF); desde Archivos se imprime o se comparte. Los respaldos se guardan con la ventana de Android.
+- Al entrar el administrador, la app revisa `android.json` del último release y avisa si hay versión nueva.
+- Los datos viven en el teléfono; la copia de seguridad es la nube (Ajustes › Nube).
+
 ## Estructura
 
 ```

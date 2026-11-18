@@ -1,4 +1,4 @@
-name: Crear instalador de Windows
+name: Crear instaladores (Windows y Android)
 
 on:
   push:
@@ -100,3 +100,117 @@ jobs:
             src-tauri/target/release/bundle/nsis/*-setup.exe
             latest.json
           make_latest: true
+
+  android:
+    needs: windows
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      - name: Preparar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Preparar el SDK y el NDK de Android
+        run: |
+          echo "NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
+          echo "SDK: $ANDROID_HOME"
+          echo "NDK: $ANDROID_NDK_LATEST_HOME"
+          ls "$ANDROID_HOME/build-tools"
+
+      - name: Preparar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Preparar Rust para Android
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+
+      - name: Reusar compilaciones anteriores
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Descargar la fuente Rubik (para que funcione sin internet)
+        continue-on-error: true
+        run: |
+          mkdir -p app/fonts
+          curl -fsSL -o app/fonts/Rubik.ttf "https://github.com/google/fonts/raw/main/ofl/rubik/Rubik%5Bwght%5D.ttf"
+
+      - name: Leer la versión
+        id: ver
+        run: echo "version=$(python3 -c "import json;print(json.load(open('src-tauri/tauri.conf.json'))['version'])")" >> "$GITHUB_OUTPUT"
+
+      - name: Instalar Tauri
+        run: npm install
+
+      - name: Crear el proyecto de Android
+        run: npx tauri android init --ci
+
+      - name: Crear los íconos (también los de Android)
+        run: npx tauri icon app/icons/app-icon.png
+
+      - name: Crear el APK
+        run: npx tauri android build --apk --target aarch64 --target armv7 --ci
+
+      - name: Firmar el APK
+        env:
+          ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE" ]; then
+            echo "::error::Falta el secreto ANDROID_KEYSTORE en GitHub (Settings › Secrets and variables › Actions)."
+            exit 1
+          fi
+          python3 - <<'PY'
+          import base64, json, os
+          d = json.loads(os.environ["ANDROID_KEYSTORE"])
+          open("cobro.p12", "wb").write(base64.b64decode(d["p12"]))
+          open("ks-pass.txt", "w").write(d["password"])
+          open("ks-alias.txt", "w").write(d.get("alias", "cobro"))
+          PY
+          KS_PASS="$(cat ks-pass.txt)"; echo "::add-mask::$KS_PASS"; export KS_PASS
+          ALIAS="$(cat ks-alias.txt)"
+          rm -f ks-pass.txt ks-alias.txt
+          BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          UNSIGNED="$(find src-tauri/gen/android/app/build/outputs/apk -name '*release*.apk' | head -1)"
+          echo "APK sin firmar: $UNSIGNED"
+          test -n "$UNSIGNED"
+          V="${{ steps.ver.outputs.version }}"
+          "$BT/zipalign" -f -p 4 "$UNSIGNED" alineado.apk
+          "$BT/apksigner" sign --ks cobro.p12 --ks-type PKCS12 --ks-pass env:KS_PASS --ks-key-alias "$ALIAS" --key-pass env:KS_PASS --out "Cobro_${V}_android.apk" alineado.apk
+          "$BT/apksigner" verify --print-certs "Cobro_${V}_android.apk" | head -5
+          rm -f cobro.p12 alineado.apk
+          ls -la "Cobro_${V}_android.apk"
+
+      - name: Crear android.json (lo lee la app del teléfono para saber si hay versión nueva)
+        run: |
+          python3 - <<'PY'
+          import json
+          v = "${{ steps.ver.outputs.version }}"
+          notes = open(".github/notas-version.md", encoding="utf-8").read().strip()
+          data = {"version": v, "url": f"https://github.com/${{ github.repository }}/releases/download/v{v}/Cobro_{v}_android.apk", "notes": notes}
+          open("android.json", "w", encoding="utf-8").write(json.dumps(data, ensure_ascii=False, indent=2))
+          print(open("android.json", encoding="utf-8").read())
+          PY
+
+      - name: Guardar el APK para descargarlo
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cobro-Android
+          path: |
+            Cobro_*_android.apk
+            android.json
+          if-no-files-found: error
+
+      - name: Publicar el APK en Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          files: |
+            Cobro_*_android.apk
+            android.json

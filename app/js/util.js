@@ -3,7 +3,7 @@
   'use strict';
   var C = (window.Cobro = window.Cobro || {});
 
-  C.VERSION = '0.4.0';
+  C.VERSION = '0.5.0';
 
   /* Identificador único universal (lo exige FinTrack para los pagos). */
   C.uuid = function () {
@@ -178,7 +178,31 @@
 
   /* Programa de Windows (.exe): guarda en Documentos\Cobro\<carpeta>. En el navegador: descarga el archivo. */
   C.isDesktop = function () { return !!(window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke); };
+  C.isAndroid = function () { return C.isDesktop() && /Android/i.test(navigator.userAgent || ''); };
+
+  /* Android: abre la ventana de Android para elegir dónde guardar (Descargas, Drive…) y escribe ahí el archivo.
+     Si la persona cancela, se rechaza con cancel = true y no se muestra error. */
+  function androidSave(filename, data) {
+    var T = window.__TAURI__;
+    if (!T || !T.dialog || !T.dialog.save || !T.fs) return Promise.reject(new Error('No se pudo abrir la ventana para guardar.'));
+    return T.dialog.save({ defaultPath: filename }).then(function (uri) {
+      if (!uri) { var e = new Error('Cancelado'); e.cancel = true; throw e; }
+      return (typeof data === 'string' ? T.fs.writeTextFile(uri, data) : T.fs.writeFile(uri, data)).then(function () { return filename; });
+    });
+  }
+
+  C.saveBytes = function (filename, bytes, mime) {
+    if (C.isAndroid()) return androidSave(filename, bytes);
+    var url = URL.createObjectURL(new Blob([bytes], { type: mime || 'application/octet-stream' }));
+    var a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+    return Promise.resolve(filename);
+  };
+
   C.saveFile = function (folder, filename, text, mime) {
+    if (C.isAndroid()) return androidSave(filename, text);
     if (C.isDesktop()) {
       return window.__TAURI__.core.invoke('guardar_archivo', { carpeta: folder, nombre: filename, contenido: text });
     }
@@ -186,6 +210,7 @@
     return Promise.resolve('');
   };
   C.savedToast = function (path, fallback) {
+    if (C.isAndroid()) { C.toast(path ? 'Guardado: ' + path : fallback); return; }
     C.toast(path ? 'Guardado en ' + path : fallback);
   };
 

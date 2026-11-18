@@ -21,7 +21,7 @@
 
   /* Programa de Windows: respaldo automático diario en Documentos\Cobro\Respaldos. */
   function autoBackup() {
-    if (!C.isDesktop() || !C.data.invoices.length) return;
+    if (!C.isDesktop() || C.isAndroid() || !C.data.invoices.length) return;
     var last = 0;
     try { last = parseInt(localStorage.getItem('cobro-auto-respaldo') || '0', 10); } catch (e) { last = 0; }
     if (Date.now() - last < 20 * 3600 * 1000) return;

@@ -105,7 +105,7 @@
         '<h1 class="h1-row">' + esc(inv.number) + ' ' + C.pill(v.status) + (inv.source === 'historial' ? '<span class="tag">Historial</span>' : '') + '</h1></div>' +
         '<div class="actions">' +
         '<button type="button" class="btn" id="wa"' + (wa ? '' : ' disabled title="Agrega el teléfono del cliente"') + '>' + C.icon('chat', 16) + 'WhatsApp</button>' +
-        '<button type="button" class="btn" id="print">' + C.icon('printer', 16) + 'Imprimir o PDF</button>' +
+        '<button type="button" class="btn" id="print">' + C.icon('printer', 16) + (C.isAndroid() ? 'Guardar PDF' : 'Imprimir o PDF') + '</button>' +
         (C.isAdmin() && !inv.voided ? '<button type="button" class="btn danger-text" id="void">Anular</button>' : '') + '</div></header>' +
         (inv.voided ? '<p class="notice danger no-print">' + C.icon('info', 16) + 'Anulada el ' + esc(C.stamp(inv.voidedAt || inv.createdAt)) + '. Motivo: ' + esc(inv.voidReason || '—') + '</p>' : '') +
         '<div class="detail-layout"><div class="paper-wrap">' + paper(inv, v) + '</div><aside class="detail-side no-print">' + side + '</aside></div>';
@@ -115,7 +115,18 @@
       if (!inv) return;
       var v = C.view(inv);
 
-      root.querySelector('#print').addEventListener('click', function () { window.print(); });
+      var pr = root.querySelector('#print');
+      pr.addEventListener('click', function () {
+        if (!C.isAndroid()) { window.print(); return; }
+        /* Android no imprime desde la app: se crea el PDF y se guarda donde elijas; desde ahí se imprime o se comparte. */
+        pr.disabled = true;
+        C.invoicePdf(inv, C.view(inv)).then(function (bytes) {
+          return C.saveBytes(inv.number + '.pdf', bytes, 'application/pdf');
+        }).then(function (name) {
+          C.commit({ put: { audit: [C.auditRow('PDF', 'PDF guardado', inv.id)] } });
+          C.toast('PDF guardado (' + name + '). Ábrelo desde Archivos para imprimirlo o compartirlo.');
+        }).catch(C.fail).then(function () { pr.disabled = false; });
+      });
 
       var wa = root.querySelector('#wa');
       if (wa) wa.addEventListener('click', function () {

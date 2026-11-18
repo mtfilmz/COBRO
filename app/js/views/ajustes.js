@@ -93,10 +93,11 @@
   function datos() {
     var batches = C.data.batches.slice().sort(function (a, b) { return b.at - a.at; });
     return '<section class="card pad stack"><div class="card-head flat"><h2 class="h2">Versión y actualizaciones</h2><span class="pill void">Versión ' + esc(C.VERSION) + '</span></div>' +
-      '<p class="small muted">' + (C.isDesktop() ? 'Cuando hay una versión nueva, Cobro te avisa al entrar como administrador y se instala solo si la autorizas. Antes guarda un respaldo de tus datos.' : 'Las actualizaciones automáticas funcionan en el programa de Windows.') + '</p>' +
+      '<p class="small muted">' + (C.isAndroid() ? 'Cuando hay una versión nueva, Cobro te avisa al entrar como administrador. Tocas Descargar, abres el archivo y tocas Instalar. Tus datos se quedan.' : C.isDesktop() ? 'Cuando hay una versión nueva, Cobro te avisa al entrar como administrador y se instala solo si la autorizas. Antes guarda un respaldo de tus datos.' : 'Las actualizaciones automáticas funcionan en el programa de Windows.') + '</p>' +
       (C.isDesktop() ? '<div class="actions-left"><button type="button" class="btn" id="check-upd">' + C.icon('refresh', 16) + 'Buscar actualizaciones</button></div>' : '') + '</section>' +
       '<section class="card pad stack"><h2 class="h2">Respaldo</h2>' +
-      '<p class="small muted">Todo está guardado en este equipo. ' + (C.isDesktop() ? 'El programa guarda un respaldo automático cada día en Documentos › Cobro › Respaldos. ' : '') + 'Copia los respaldos de vez en cuando a una memoria USB o a la nube.</p>' +
+      (C.isAndroid() ? '<p class="small muted">Todo está guardado en este teléfono. Con la nube conectada (Ajustes › Nube) tienes la copia de seguridad. También puedes guardar un respaldo y mandarlo a Drive.</p>' :
+        '<p class="small muted">Todo está guardado en este equipo. ' + (C.isDesktop() ? 'El programa guarda un respaldo automático cada día en Documentos › Cobro › Respaldos. ' : '') + 'Copia los respaldos de vez en cuando a una memoria USB o a la nube.</p>') +
       '<div class="actions-left"><button type="button" class="btn primary" id="backup">' + C.icon('download', 16) + 'Descargar respaldo completo (.json)</button>' +
       '<label class="btn">' + C.icon('undo', 16) + 'Recuperar desde un respaldo<input type="file" accept=".json,application/json" id="restore" hidden></label></div>' +
       '<p class="small muted" id="storage-info"></p></section>' +
@@ -169,7 +170,7 @@
         '<label class="field">Contraseña de Factura<input class="input" type="password" name="password" autocomplete="current-password"></label></div>' +
         '<p class="small muted">Usa la misma cuenta con la que entras a Factura. La contraseña no se guarda en Cobro; solo se usa para iniciar la sesión.</p>' +
         '<div class="actions-left"><button type="submit" class="btn primary" id="nb-connect">' + C.icon('cloud', 16) + 'Conectar</button></div></form>' +
-        '<div class="notice">' + C.icon('info', 16) + '<div><strong>En otra computadora:</strong> instala Cobro, crea el administrador y conecta aquí con la misma cuenta. Se bajan todos los datos. No vuelvas a importar el historial de Factura allí, porque saldría repetido.</div></div></section>';
+        '<div class="notice">' + C.icon('info', 16) + '<div><strong>En otra computadora o teléfono:</strong> instala Cobro, crea el administrador y conecta aquí con la misma cuenta. Se bajan todos los datos. No vuelvas a importar el historial de Factura allí, porque saldría repetido.</div></div></section>';
     }
     return html;
   }
