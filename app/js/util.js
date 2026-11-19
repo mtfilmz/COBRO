@@ -3,7 +3,7 @@
   'use strict';
   var C = (window.Cobro = window.Cobro || {});
 
-  C.VERSION = '0.5.0';
+  C.VERSION = '0.5.1';
 
   /* Identificador único universal (lo exige FinTrack para los pagos). */
   C.uuid = function () {
@@ -199,6 +199,19 @@
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
     return Promise.resolve(filename);
+  };
+
+  C.toBase64 = function (bytes) {
+    var s = '';
+    for (var i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(s);
+  };
+
+  /* Imagen de factura: Android → ventana para elegir dónde guardar; Windows → Documentos\Cobro\Facturas; navegador → descarga. */
+  C.saveImage = function (filename, bytes) {
+    if (C.isAndroid()) return androidSave(filename, bytes);
+    if (C.isDesktop()) return window.__TAURI__.core.invoke('guardar_binario', { carpeta: 'Facturas', nombre: filename, contenidoB64: C.toBase64(bytes) });
+    return C.saveBytes(filename, bytes, 'image/jpeg').then(function () { return ''; });
   };
 
   C.saveFile = function (folder, filename, text, mime) {

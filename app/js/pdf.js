@@ -1,5 +1,5 @@
-/* Cobro · PDF de la factura sin librerías externas (texto vectorial, Helvetica, WinAnsi).
-   Se usa en Android, donde la vista web no puede imprimir directo. */
+/* Cobro · factura como PDF o como imagen (JPG), sin librerías externas.
+   El mismo diseño se dibuja en un PDF (texto vectorial, Helvetica) o en un lienzo (imagen para compartir). */
 (function () {
   'use strict';
   var C = window.Cobro;
@@ -31,7 +31,7 @@
   }
 
   function Doc() {
-    this.W = 612; this.H = 792;
+    this.W = 612; this.H = 792; this.paged = true; this.margin = 48;
     this.pages = [];
     this.images = [];
     this.addPage();
@@ -103,10 +103,10 @@
     var x = cx - (w / 2) * c, y = (this.H - cy) - (w / 2) * si;
     this.cur.push('q /GS1 gs BT ' + rgb(color) + ' rg /F2 ' + n(size) + ' Tf ' + [c, si, -si, c, x, y].map(n).join(' ') + ' Tm ' + pdfString(s) + ' Tj ET Q');
   };
-  /* jpeg: Uint8Array con un JPEG; w/h en píxeles; se dibuja en (x, y) con tamaño dw × dh. */
-  Doc.prototype.image = function (jpeg, w, h, x, y, dw, dh) {
+  /* logo: { data: JPEG en Uint8Array, w, h }; se dibuja en (x, y) con tamaño dw × dh. */
+  Doc.prototype.image = function (logo, x, y, dw, dh) {
     var id = 'Im' + (this.images.length + 1);
-    this.images.push({ id: id, data: jpeg, w: w, h: h });
+    this.images.push({ id: id, data: logo.data, w: logo.w, h: logo.h });
     this.cur.push('q ' + n(dw) + ' 0 0 ' + n(dh) + ' ' + n(x) + ' ' + n(this.H - y - dh) + ' cm /' + id + ' Do Q');
   };
 
@@ -152,6 +152,90 @@
     return out;
   };
 
+  Doc.prototype.stampAll = function (s) {
+    var self = this;
+    this.pages.forEach(function (p) { self.cur = p; self.stamp(s, self.W / 2, self.H / 2, 96, '#B91C1C'); });
+  };
+
+  /* ---------- Lienzo para la imagen JPG (una sola hoja larga, del alto que haga falta) ---------- */
+  var FONT = "Rubik, 'Segoe UI', Roboto, Arial, sans-serif";
+  function Img() {
+    this.W = 612; this.H = 792; this.paged = false; this.margin = 36;
+    this.ops = []; this.bottom = 0; this.stampText = '';
+    this.m = document.createElement('canvas').getContext('2d');
+  }
+  Img.prototype.font = function (size, bold) { return (bold ? '600 ' : '400 ') + size + 'px ' + FONT; };
+  Img.prototype.width = function (s, size, bold) { this.m.font = this.font(size, bold); return this.m.measureText(String(s)).width; };
+  Img.prototype.wrap = Doc.prototype.wrap;
+  Img.prototype.mark = function (y) { if (y > this.bottom) this.bottom = y; };
+  Img.prototype.text = function (x, y, s, o) {
+    o = o || {};
+    var size = o.size || 10;
+    var self = this;
+    var w = this.width(s, size, o.bold) + (o.spacing ? o.spacing * Math.max(0, String(s).length - 1) : 0);
+    if (o.align === 'right') x -= w;
+    else if (o.align === 'center') x -= w / 2;
+    this.mark(y + size * 0.3);
+    this.ops.push(function (g) {
+      g.font = self.font(size, o.bold);
+      g.fillStyle = o.color || '#111827';
+      if ('letterSpacing' in g) g.letterSpacing = (o.spacing || 0) + 'px';
+      g.fillText(String(s), x, y);
+      if ('letterSpacing' in g) g.letterSpacing = '0px';
+    });
+    return w;
+  };
+  function roundPath(g, x, y, w, h, r) {
+    g.beginPath();
+    if (!r) { g.rect(x, y, w, h); return; }
+    g.moveTo(x + r, y); g.lineTo(x + w - r, y); g.quadraticCurveTo(x + w, y, x + w, y + r);
+    g.lineTo(x + w, y + h - r); g.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    g.lineTo(x + r, y + h); g.quadraticCurveTo(x, y + h, x, y + h - r);
+    g.lineTo(x, y + r); g.quadraticCurveTo(x, y, x + r, y); g.closePath();
+  }
+  Img.prototype.rect = function (x, y, w, h, o) {
+    o = o || {};
+    this.mark(y + h);
+    this.ops.push(function (g) {
+      roundPath(g, x, y, w, h, o.r || 0);
+      if (o.fill) { g.fillStyle = o.fill; g.fill(); }
+      if (o.stroke) { g.strokeStyle = o.stroke; g.lineWidth = o.lw || 0.75; g.stroke(); }
+    });
+  };
+  Img.prototype.line = function (x1, y1, x2, y2, color, lw) {
+    this.mark(Math.max(y1, y2));
+    this.ops.push(function (g) { g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.strokeStyle = color || '#E5E7EB'; g.lineWidth = lw || 0.75; g.stroke(); });
+  };
+  Img.prototype.image = function (logo, x, y, dw, dh) {
+    this.mark(y + dh);
+    this.ops.push(function (g) { if (logo.canvas) g.drawImage(logo.canvas, x, y, dw, dh); });
+  };
+  Img.prototype.stampAll = function (s) { this.stampText = s; };
+  Img.prototype.render = function (scale) {
+    var h = Math.ceil(this.bottom + this.margin);
+    var cv = document.createElement('canvas');
+    cv.width = Math.round(this.W * scale);
+    cv.height = Math.round(h * scale);
+    var g = cv.getContext('2d');
+    g.scale(scale, scale);
+    g.fillStyle = '#FFFFFF';
+    g.fillRect(0, 0, this.W, h);
+    g.textBaseline = 'alphabetic';
+    this.ops.forEach(function (op) { op(g); });
+    if (this.stampText) {
+      g.save();
+      g.translate(this.W / 2, h / 2);
+      g.rotate(-Math.PI / 9);
+      g.globalAlpha = 0.16;
+      g.fillStyle = '#B91C1C';
+      g.font = this.font(96, true);
+      g.textAlign = 'center';
+      g.fillText(this.stampText, 0, 32);
+      g.restore();
+    }
+    return cv;
+  };
+
   C.PdfDoc = Doc;
 
   /* Convierte el logo (data URL) en JPEG con fondo blanco para el PDF. */
@@ -173,7 +257,7 @@
           var bin = atob(b64);
           var bytes = new Uint8Array(bin.length);
           for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-          resolve({ data: bytes, w: side, h: side });
+          resolve({ data: bytes, w: side, h: side, canvas: cv });
         } catch (e) { resolve(null); }
       };
       img.onerror = function () { resolve(null); };
@@ -183,18 +267,16 @@
 
   var TYPE_COLOR = { venta: '#2459D6', servicio: '#0F766E', reparacion: '#C2410C' };
 
-  /* Factura completa como PDF (Uint8Array). Misma información que la hoja blanca. */
-  C.invoicePdf = function (inv, v) {
-    var b = C.settings.business;
-    return logoJpeg(b.logo).then(function (logo) {
-      var d = new Doc();
-      var M = 48, R = d.W - M, Wc = R - M;
+  /* Dibuja la factura (misma información que la hoja blanca) sobre un PDF o un lienzo. */
+  function layout(d, inv, v, logo) {
+      var b = C.settings.business;
+      var M = d.margin, R = d.W - M, Wc = R - M;
       var MUTED = '#6B7280', BODY = '#374151', STRONG = '#0F172A', BORDER = '#E5E7EB';
-      var y = 48;
-      function ensure(h) { if (y + h > d.H - 48) { d.addPage(); y = 48; } }
+      var y = M;
+      function ensure(h) { if (d.paged && y + h > d.H - 48) { d.addPage(); y = 48; } }
 
       // Encabezado
-      if (logo) d.image(logo.data, logo.w, logo.h, M, y, 46, 46);
+      if (logo) d.image(logo, M, y, 46, 46);
       else {
         d.rect(M, y, 46, 46, { fill: '#13284A', r: 7 });
         d.text(M + 23, y + 28, 'SM', { size: 16, bold: true, color: '#FFFFFF', align: 'center' });
@@ -282,7 +364,7 @@
         var nameL = d.wrap(l.name || '', 10, true, 290);
         var descL = l.description ? d.wrap(l.description, 8.5, false, 290) : [];
         var h = 12 + nameL.length * 13 + descL.length * 11 + 4;
-        if (y + h > d.H - 48) { d.addPage(); y = 48; head(); }
+        if (d.paged && y + h > d.H - 48) { d.addPage(); y = 48; head(); }
         var ty = y + 16;
         nameL.forEach(function (ln, k) { d.text(M + 10, ty + k * 13, ln, { size: 10, bold: true, color: STRONG }); });
         descL.forEach(function (ln, k) { d.text(M + 10, ty + nameL.length * 13 + k * 11, ln, { size: 8.5, color: MUTED }); });
@@ -332,10 +414,38 @@
       y += 12;
       footLines.forEach(function (f) { d.text(M, y, f[0], { size: f[1], bold: f[2], color: f[3] }); y += 13; });
 
-      if (inv.voided) {
-        d.pages.forEach(function (p) { d.cur = p; d.stamp('ANULADA', d.W / 2, d.H / 2, 96, '#B91C1C'); });
-      }
-      return d.output();
+      if (inv.voided) d.stampAll('ANULADA');
+      return d;
+  }
+
+  /* Factura como PDF (Uint8Array). */
+  C.invoicePdf = function (inv, v) {
+    return logoJpeg(C.settings.business.logo).then(function (logo) { return layout(new Doc(), inv, v, logo).output(); });
+  };
+
+  function fontsReady() {
+    if (!document.fonts || !document.fonts.load) return Promise.resolve();
+    return Promise.all([document.fonts.load('400 12px Rubik'), document.fonts.load('600 12px Rubik')]).catch(function () {});
+  }
+
+  /* Factura como imagen: devuelve el lienzo (1224 px de ancho, el alto que haga falta). */
+  C.invoiceCanvas = function (inv, v) {
+    return fontsReady().then(function () { return logoJpeg(C.settings.business.logo); }).then(function (logo) {
+      return layout(new Img(), inv, v, logo).render(2);
     });
+  };
+
+  C.canvasBytes = function (cv, mime, quality) {
+    return new Promise(function (resolve, reject) {
+      cv.toBlob(function (blob) {
+        if (!blob) { reject(new Error('No se pudo crear la imagen.')); return; }
+        blob.arrayBuffer().then(function (buf) { resolve(new Uint8Array(buf)); }, reject);
+      }, mime || 'image/jpeg', quality || 0.92);
+    });
+  };
+
+  /* Factura como JPG (Uint8Array). */
+  C.invoiceJpg = function (inv, v) {
+    return C.invoiceCanvas(inv, v).then(function (cv) { return C.canvasBytes(cv, 'image/jpeg', 0.92); });
   };
 })();

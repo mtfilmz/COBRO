@@ -1,3 +1,4 @@
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fs;
@@ -33,6 +34,75 @@ fn guardar_archivo(
     fs::create_dir_all(&dir).map_err(|e| format!("No se pudo crear la carpeta: {e}"))?;
     let ruta = dir.join(nombre);
     fs::write(&ruta, contenido).map_err(|e| format!("No se pudo guardar el archivo: {e}"))?;
+    Ok(ruta.to_string_lossy().to_string())
+}
+
+fn limpiar_nombre(s: &str) -> String {
+    s.chars()
+        .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_' || *c == '.')
+        .collect()
+}
+
+fn decodificar(b64: &str) -> Result<Vec<u8>, String> {
+    if b64.len() > 40_000_000 {
+        return Err("El archivo es demasiado grande.".into());
+    }
+    base64::engine::general_purpose::STANDARD
+        .decode(b64.as_bytes())
+        .map_err(|_| "El archivo no es válido.".to_string())
+}
+
+/// Guarda un archivo binario (la imagen JPG de una factura) en Documentos\Cobro\<carpeta>\<nombre>.
+#[tauri::command]
+fn guardar_binario(
+    app: tauri::AppHandle,
+    carpeta: String,
+    nombre: String,
+    contenido_b64: String,
+) -> Result<String, String> {
+    let carpeta = limpiar_nombre(&carpeta);
+    let nombre = limpiar_nombre(&nombre);
+    if carpeta.is_empty() || nombre.is_empty() || nombre.starts_with('.') {
+        return Err("Nombre de archivo no válido.".into());
+    }
+    let datos = decodificar(&contenido_b64)?;
+    #[cfg(target_os = "android")]
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    #[cfg(not(target_os = "android"))]
+    let base = app.path().document_dir().map_err(|e| e.to_string())?;
+    let dir = base.join("Cobro").join(carpeta);
+    fs::create_dir_all(&dir).map_err(|e| format!("No se pudo crear la carpeta: {e}"))?;
+    let ruta = dir.join(nombre);
+    fs::write(&ruta, datos).map_err(|e| format!("No se pudo guardar el archivo: {e}"))?;
+    Ok(ruta.to_string_lossy().to_string())
+}
+
+/// Guarda un archivo en la carpeta temporal de la app (para compartirlo) y devuelve su ruta.
+/// Borra los archivos que quedaron de veces anteriores.
+#[tauri::command]
+fn archivo_temporal(
+    app: tauri::AppHandle,
+    nombre: String,
+    contenido_b64: String,
+) -> Result<String, String> {
+    let nombre = limpiar_nombre(&nombre);
+    if nombre.is_empty() || nombre.starts_with('.') {
+        return Err("Nombre de archivo no válido.".into());
+    }
+    let datos = decodificar(&contenido_b64)?;
+    let dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| e.to_string())?
+        .join("compartir");
+    fs::create_dir_all(&dir).map_err(|e| format!("No se pudo crear la carpeta temporal: {e}"))?;
+    if let Ok(entradas) = fs::read_dir(&dir) {
+        for e in entradas.flatten() {
+            let _ = fs::remove_file(e.path());
+        }
+    }
+    let ruta = dir.join(nombre);
+    fs::write(&ruta, datos).map_err(|e| format!("No se pudo preparar el archivo: {e}"))?;
     Ok(ruta.to_string_lossy().to_string())
 }
 
@@ -565,6 +635,8 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init());
     #[cfg(desktop)]
     let builder = builder.plugin(tauri_plugin_process::init());
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(tauri_plugin_compartir::init());
     builder
         .setup(|_app| {
             // Actualizaciones firmadas desde GitHub Releases; la app pide autorización antes de instalar.
@@ -584,7 +656,9 @@ pub fn run() {
             nube_conectar,
             nube_desconectar,
             nube_pedir,
-            buscar_version_movil
+            buscar_version_movil,
+            guardar_binario,
+            archivo_temporal
         ])
         .run(tauri::generate_context!())
         .expect("no se pudo iniciar Cobro");
