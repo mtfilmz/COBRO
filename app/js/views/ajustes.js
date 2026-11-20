@@ -3,7 +3,7 @@
   'use strict';
   var C = window.Cobro;
   var esc = C.esc;
-  var TABS = [['negocio', 'Negocio'], ['apariencia', 'Apariencia'], ['usuarios', 'Usuarios'], ['facturacion', 'Facturación'], ['fintrack', 'FinTrack'], ['nube', 'Nube'], ['datos', 'Datos y respaldo']];
+  var TABS = [['negocio', 'Negocio'], ['apariencia', 'Apariencia'], ['usuarios', 'Usuarios'], ['facturacion', 'Facturación'], ['fintrack', 'FinTrack'], ['gamefix', 'Game Fix'], ['nube', 'Nube'], ['datos', 'Datos y respaldo']];
   var PERMS = [
     ['crear', 'Crear facturas', 'Incluye cobrar al momento de crearla', false],
     ['clientes', 'Ver y agregar clientes', 'Necesario para buscar clientes al facturar', false],
@@ -144,6 +144,48 @@
     return html;
   }
 
+  function gamefix() {
+    var g = C.settings.gamefix || {};
+    var head = '<section class="card pad stack"><div class="card-head flat"><h2 class="h2">Clientes con Game Fix</h2>' +
+      '<span class="pill ' + (g.bindingId ? (g.broken ? 'void' : 'ok') : 'void') + '">' + (g.bindingId ? (g.broken ? 'Revisar conexión' : 'Conectado') : 'Sin conectar') + '</span></div>' +
+      '<p class="small muted">Cobro y Game Fix comparten la lista de clientes en los dos sentidos: Cobro trae los clientes y contactos de Game Fix, y le manda los suyos. ' +
+      'Si dos clientes tienen el mismo teléfono quedan como uno solo; con el mismo nombre y teléfono distinto se quedan los dos. No se borra ni se pisa ningún dato: solo se llenan los vacíos. No se comparten pagos ni equipos.</p>';
+    if (!C.isDesktop()) return head + '<p class="notice">' + C.icon('info', 16) + 'La conexión con Game Fix funciona en el programa de Windows y en la app de Android.</p></section>';
+    if (g.bindingId) {
+      var l = g.last || {};
+      var tot = { brought: 0, linked: 0, inGf: 0, conflicts: 0 };
+      C.data.customers.forEach(function (c) {
+        if (!c.gf) return;
+        if (c.gf.origin === 'clients' || c.gf.origin === 'repairs') tot.brought++;
+        else if ((c.gf.srcs || []).length) tot.linked++;
+        if (c.gf.origin !== 'repairs' && c.gf.id) tot.inGf++;
+        if (c.gf.status === 'conflict') tot.conflicts++;
+      });
+      l.conflicts = tot.conflicts;
+      return head + '<div class="kpis"><div class="card kpi"><span class="muted">Última sincronización</span><span class="strong">' + (g.lastSync ? esc(C.stamp(g.lastSync)) : 'Todavía no') + '</span>' +
+        (g.lastSync ? '<span class="small muted">' + (l.added || 0) + ' nuevos · ' + (l.sent || 0) + ' enviados esa vez</span>' : '') + '</div>' +
+        '<div class="card kpi"><span class="muted">Clientes traídos de Game Fix</span><span class="amount-md">' + tot.brought + '</span><span class="small muted">' + tot.linked + ' de Cobro unidos con Game Fix</span></div>' +
+        '<div class="card kpi"><span class="muted">Clientes de Cobro en Game Fix</span><span class="amount-md">' + tot.inGf + '</span><span class="small muted">' + tot.conflicts + ' con datos distintos</span></div></div>' +
+        (g.broken ? '<div class="notice danger">' + C.icon('info', 16) + '<div>Game Fix no aceptó la conexión. Revisa que la clave sea la misma en las dos apps o vuelve a vincular.</div></div>' : '') +
+        (g.receiveOff ? '<div class="notice">' + C.icon('info', 16) + '<div>Para mandar los clientes de Cobro, activa <strong>Recibir clientes de Tech Repair</strong> en Game Fix › Configuración › Clientes · Tech Repair.</div></div>' : '') +
+        ((l.conflicts || 0) ? '<div class="notice">' + C.icon('info', 16) + '<div>Hay clientes con datos distintos en las dos apps. En Game Fix › Clientes eliges cuál conservar.</div></div>' : '') +
+        (C.gamefix && C.gamefix.error && C.gamefix.status === 'error' ? '<div class="notice danger">' + C.icon('info', 16) + '<div>' + esc(C.gamefix.error) + '</div></div>' : '') +
+        '<div class="actions-left"><button type="button" class="btn" id="gf-sync">' + C.icon('refresh', 16) + 'Sincronizar ahora</button>' +
+        '<button type="button" class="btn danger-text" id="gf-off">Desconectar</button></div>' +
+        '<p class="small muted">Se sincroniza sola al abrir Cobro y cada 30 minutos.</p></section>';
+    }
+    return head +
+      '<div class="ft-step"><span class="step-dot">1</span><div class="stack-sm"><span class="strong">Clave privada</span>' +
+      '<span class="small muted">Crea una clave aquí y guárdala en Game Fix (Lovable › Super Mobile Game Fix › Cloud › Secrets) con el nombre <code>TECH_REPAIR_CLIENT_SHARED_SECRET</code>. No la pegues en ningún chat.</span>' +
+      '<div class="actions-left"><button type="button" class="btn" id="gf-key">' + C.icon('lock', 16) + 'Crear clave nueva</button><span class="small muted" id="gf-key-state"></span></div></div></div>' +
+      '<div class="ft-step"><span class="step-dot">2</span><div class="stack-sm"><span class="strong">Código de Game Fix</span>' +
+      '<span class="small muted">En Game Fix › Configuración › Clientes · Tech Repair toca <em>Generar código de clientes</em>, cópialo y pégalo aquí antes de 10 minutos.</span>' +
+      '<div class="code-row"><input class="input" id="gf-code" placeholder="Código de 64 caracteres" autocomplete="off"><button type="button" class="btn primary" id="gf-connect">Conectar</button></div></div></div>' +
+      '<div class="ft-step"><span class="step-dot">3</span><div class="stack-sm"><span class="strong">Recibir clientes</span>' +
+      '<span class="small muted">Después de conectar, activa <em>Recibir clientes de Tech Repair</em> en esa misma sección de Game Fix para que Cobro también le mande sus clientes.</span></div></div>' +
+      '</section>';
+  }
+
   function nube() {
     var n = C.nube || {};
     var on = !!C.nubeOn;
@@ -217,7 +259,7 @@
     allowed: function () { return C.isAdmin(); },
     render: function (tab) {
       tab = tab || 'negocio';
-      var body = { negocio: negocio, apariencia: apariencia, usuarios: usuarios, facturacion: facturacion, fintrack: fintrack, nube: nube, datos: datos }[tab] || negocio;
+      var body = { negocio: negocio, apariencia: apariencia, usuarios: usuarios, facturacion: facturacion, fintrack: fintrack, gamefix: gamefix, nube: nube, datos: datos }[tab] || negocio;
       return '<header class="page-head"><div><h1>Ajustes</h1></div></header>' +
         '<nav class="tabs" aria-label="Secciones de ajustes">' + TABS.map(function (t) {
           return '<a href="#/ajustes/' + t[0] + '" class="tab' + (tab === t[0] ? ' on' : '') + '"' + (tab === t[0] ? ' aria-current="page"' : '') + '>' + t[1] + '</a>';
@@ -287,6 +329,45 @@
       if (fo) fo.addEventListener('click', function () {
         C.confirm('Desconectar FinTrack', 'Los pagos nuevos dejarán de enviarse. Lo que ya está en FinTrack no se borra. Desconecta también a Cobro en FinTrack.', 'Desconectar', true).then(function (ok) {
           if (ok) C.fintrackDisconnect().then(function () { C.toast('FinTrack desconectado.'); C.render(); }).catch(C.fail);
+        });
+      });
+      var gk = root.querySelector('#gf-key');
+      if (gk) {
+        C.gamefixState().then(function (s) { var el = root.querySelector('#gf-key-state'); if (el) el.textContent = s.tiene_clave ? 'Clave guardada en este equipo.' : 'Todavía no hay clave.'; }).catch(function () {});
+        gk.addEventListener('click', function () {
+          var key = C.fintrackNewKey();
+          C.gamefixSaveKey(key).then(function () {
+            return C.modal({
+              title: 'Clave privada de clientes',
+              html: '<p class="muted">Cópiala y guárdala en Game Fix (Lovable › Super Mobile Game Fix › Cloud › Secrets) con el nombre <code>TECH_REPAIR_CLIENT_SHARED_SECRET</code>. Si ya existe, cambia su valor por esta.</p>' +
+                '<div class="recovery-code key">' + esc(key) + '</div><p class="small muted">No la compartas por chat. Ya quedó guardada en este equipo.</p>',
+              okLabel: 'Copiar y cerrar', cancelLabel: 'Cerrar',
+              onOk: function () { if (navigator.clipboard) navigator.clipboard.writeText(key).catch(function () {}); return true; }
+            });
+          }).then(function () { C.render(); }).catch(C.fail);
+        });
+      }
+      var gc = root.querySelector('#gf-connect');
+      if (gc) gc.addEventListener('click', function () {
+        gc.disabled = true;
+        gc.textContent = 'Conectando…';
+        C.gamefixConnect(root.querySelector('#gf-code').value).then(function (r) {
+          C.toast(r ? 'Conectado. ' + r.added + ' clientes nuevos de Game Fix, ' + r.sent + ' enviados.' : 'Conectado con Game Fix.');
+          C.render();
+        }).catch(function (err) { gc.disabled = false; gc.textContent = 'Conectar'; C.fail(err); C.render(); });
+      });
+      var gs = root.querySelector('#gf-sync');
+      if (gs) gs.addEventListener('click', function () {
+        gs.disabled = true;
+        C.gamefixSync(true).then(function (r) {
+          if (r) C.toast('Listo: ' + r.added + ' nuevos de Game Fix, ' + r.linked + ' completados, ' + r.sent + ' enviados.');
+          C.render();
+        }).catch(function (err) { C.fail(err); C.render(); });
+      });
+      var go = root.querySelector('#gf-off');
+      if (go) go.addEventListener('click', function () {
+        C.confirm('Desconectar Game Fix', 'Cobro dejará de traer y mandar clientes. Los clientes que ya están en Cobro se quedan. Para cortar el acceso del todo, toca también Desconectar clientes en Game Fix.', 'Desconectar', true).then(function (ok) {
+          if (ok) C.gamefixDisconnect().then(function () { C.toast('Game Fix desconectado.'); C.render(); }).catch(C.fail);
         });
       });
       var nf = root.querySelector('#nb-form');

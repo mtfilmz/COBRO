@@ -106,6 +106,95 @@ fn archivo_temporal(
     Ok(ruta.to_string_lossy().to_string())
 }
 
+/* ---------- Clientes con Game Fix ----------
+Llama a la función tech-repair-clients de Game Fix con la clave privada de clientes.
+La clave se guarda aquí (carpeta de datos de la app), nunca en los ajustes ni en los respaldos. */
+
+const GAMEFIX_URL: &str =
+    "https://tbkptuvpzwvdjqmsbmeh.supabase.co/functions/v1/tech-repair-clients";
+// Clave pública (anon) de Game Fix: ya va dentro de la página de Game Fix; solo deja pasar la llamada.
+const GAMEFIX_ANON: &str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRia3B0dXZwend2ZGpxbXNibWVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxNzM2NTMsImV4cCI6MjA5MTc0OTY1M30.4oXZm3fff6bWx6bZIz96_5gNN-41XZfjEXafx6EbndE";
+
+#[derive(Serialize, Deserialize, Default)]
+struct GameFixLocal {
+    clave: Option<String>,
+}
+
+#[derive(Serialize)]
+struct EstadoGameFix {
+    tiene_clave: bool,
+}
+
+fn ruta_gamefix(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir.join("gamefix.json"))
+}
+
+fn leer_gamefix(app: &tauri::AppHandle) -> GameFixLocal {
+    ruta_gamefix(app)
+        .ok()
+        .and_then(|r| fs::read_to_string(r).ok())
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+fn gamefix_estado(app: tauri::AppHandle) -> EstadoGameFix {
+    EstadoGameFix {
+        tiene_clave: leer_gamefix(&app).clave.is_some(),
+    }
+}
+
+#[tauri::command]
+fn gamefix_guardar_clave(app: tauri::AppHandle, clave: String) -> Result<(), String> {
+    let clave = clave.trim().to_string();
+    if clave.len() < 32 || clave.len() > 256 || !clave.chars().all(|c| c.is_ascii_graphic()) {
+        return Err("La clave debe tener entre 32 y 256 caracteres, sin espacios.".into());
+    }
+    let ruta = ruta_gamefix(&app)?;
+    let texto =
+        serde_json::to_string(&GameFixLocal { clave: Some(clave) }).map_err(|e| e.to_string())?;
+    fs::write(ruta, texto).map_err(|e| format!("No se pudo guardar la clave: {e}"))
+}
+
+#[tauri::command]
+fn gamefix_olvidar(app: tauri::AppHandle) -> Result<(), String> {
+    let ruta = ruta_gamefix(&app)?;
+    if ruta.exists() {
+        fs::remove_file(ruta).map_err(|e| format!("No se pudo borrar la clave: {e}"))?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn gamefix_pedir(app: tauri::AppHandle, cuerpo: String) -> Result<Respuesta, String> {
+    let clave = leer_gamefix(&app)
+        .clave
+        .ok_or_else(|| "Falta la clave privada de clientes.".to_string())?;
+    if cuerpo.len() > 200_000 {
+        return Err("Solicitud demasiado grande.".into());
+    }
+    let cli = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let r = cli
+        .post(GAMEFIX_URL)
+        .header("Content-Type", "application/json")
+        .header("X-Client-Integration-Secret", clave)
+        .header("apikey", GAMEFIX_ANON)
+        .header("Authorization", format!("Bearer {GAMEFIX_ANON}"))
+        .body(cuerpo)
+        .send()
+        .await
+        .map_err(|e| format!("No se pudo llegar a Game Fix: {e}"))?;
+    let status = r.status().as_u16();
+    let body = r.text().await.unwrap_or_default();
+    Ok(Respuesta { status, body })
+}
+
 /* ---------- Conexión con FinTrack ----------
 La clave de conexión y la dirección de FinTrack se guardan aquí, en la carpeta de datos
 de la app, y nunca pasan a la parte web. Los envíos salen desde este lado (Rust). */
@@ -658,7 +747,11 @@ pub fn run() {
             nube_pedir,
             buscar_version_movil,
             guardar_binario,
-            archivo_temporal
+            archivo_temporal,
+            gamefix_estado,
+            gamefix_guardar_clave,
+            gamefix_olvidar,
+            gamefix_pedir
         ])
         .run(tauri::generate_context!())
         .expect("no se pudo iniciar Cobro");

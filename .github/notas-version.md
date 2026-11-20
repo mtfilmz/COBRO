@@ -1,4 +1,4 @@
-Novedades de Cobro 0.5.1:
-- La factura se comparte como imagen (JPG), no como texto.
-- Android: el botón Compartir abre el menú del teléfono con la imagen de la factura para mandarla por WhatsApp u otra app. Guardar imagen guarda el JPG donde elijas.
-- Windows: el botón WhatsApp copia la imagen de la factura y abre el chat del cliente; solo pégala con Ctrl+V. Guardar imagen la guarda en Documentos › Cobro › Facturas.
+Novedades de Cobro 0.6.0:
+- Clientes compartidos con Game Fix en los dos sentidos (Ajustes › Game Fix): Cobro trae los clientes y contactos de Game Fix y le manda los suyos.
+- Repetidos: mismo teléfono = un solo cliente; mismo nombre con teléfono distinto = dos clientes. No se borra ni se pisa ningún dato.
+- Al facturar, si hay varios clientes con el mismo nombre, la lista muestra cada uno con su teléfono para elegir el correcto.

@@ -80,7 +80,13 @@
   function render() {
     var d = draft;
     var dev = d.device;
-    var custOptions = C.data.customers.map(function (c) { return '<option value="' + esc(c.name) + '">' + esc(c.phone || '') + '</option>'; }).join('');
+    /* Si hay varios clientes con el mismo nombre (teléfonos distintos), cada opción lleva su teléfono para elegir el correcto. */
+    var nameCount = {};
+    C.data.customers.forEach(function (c) { var k = C.norm(c.name); nameCount[k] = (nameCount[k] || 0) + 1; });
+    var custOptions = C.data.customers.map(function (c) {
+      var v = nameCount[C.norm(c.name)] > 1 && c.phone ? c.name + ' · ' + c.phone : c.name;
+      return '<option value="' + esc(v) + '">' + esc(c.phone || '') + '</option>';
+    }).join('');
     var catOptions = C.data.catalog.filter(function (c) { return c.active !== false; }).map(function (c) { return '<option value="' + esc(c.name) + '">' + C.money(c.price) + '</option>'; }).join('');
     var methods = C.settings.billing.methods;
     return '<header class="page-head"><div><a class="back" href="#/facturas">' + C.icon('back', 16) + 'Facturas</a><h1>Nueva factura</h1></div>' +
@@ -207,10 +213,21 @@
       form.addEventListener('change', function (e) {
         var el = e.target;
         if (el.getAttribute('data-f') === 'customer.name') {
-          var c = C.data.customers.find(function (x) { return C.norm(x.name) === C.norm(el.value); });
-          if (c && c.phone) {
-            if (!draft.customer.phone) { draft.customer.phone = c.phone; form.querySelector('[data-f="customer.phone"]').value = c.phone; }
-            if (!draft.customer.sendTo) { draft.customer.sendTo = c.phone; form.querySelector('[data-f="customer.sendTo"]').value = c.phone; }
+          var phoneEl = form.querySelector('[data-f="customer.phone"]');
+          var sendEl = form.querySelector('[data-f="customer.sendTo"]');
+          var picked = C.data.customers.find(function (x) { return x.phone && x.name + ' · ' + x.phone === el.value; });
+          if (picked) {
+            // Elegido de la lista con su teléfono: nombre limpio y su teléfono.
+            el.value = picked.name; draft.customer.name = picked.name;
+            draft.customer.phone = picked.phone; phoneEl.value = picked.phone;
+            draft.customer.sendTo = picked.phone; sendEl.value = picked.phone;
+          } else {
+            var same = C.data.customers.filter(function (x) { return C.norm(x.name) === C.norm(el.value); });
+            var c = same.length === 1 ? same[0] : null;
+            if (c && c.phone) {
+              if (!draft.customer.phone) { draft.customer.phone = c.phone; phoneEl.value = c.phone; }
+              if (!draft.customer.sendTo) { draft.customer.sendTo = c.phone; sendEl.value = c.phone; }
+            }
           }
         }
         if (el.getAttribute('data-f') && el.tagName === 'SELECT') { setPath(draft, el.getAttribute('data-f'), el.value); refreshTotals(root); }

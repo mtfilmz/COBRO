@@ -93,6 +93,7 @@
     d.billing.tax = Object.assign({}, C.DEFAULT_SETTINGS.billing.tax, (v.billing || {}).tax || {});
     if (!Array.isArray(d.billing.methods) || !d.billing.methods.length) d.billing.methods = C.DEFAULT_SETTINGS.billing.methods.slice();
     d.fintrack = Object.assign({}, v.fintrack || {});
+    d.gamefix = Object.assign({}, v.gamefix || {});
     d._m = v._m || 0;
     return d;
   }
@@ -359,7 +360,8 @@
       var byPhone = C.data.customers.find(function (c) { return C.digits(c.phone).slice(-7) === d.slice(-7) && d.slice(-7).length === 7; });
       if (byPhone) return byPhone;
     }
-    return n ? C.data.customers.find(function (c) { return C.norm(c.name) === n; }) : null;
+    /* Mismo nombre solo cuenta como el mismo cliente si no chocan los teléfonos (uno de los dos no tiene). */
+    return n ? (C.data.customers.find(function (c) { return C.norm(c.name) === n && (d.length < 7 || C.digits(c.phone).length < 7); }) || null) : null;
   };
 
   C.saveCustomer = function (c) {
