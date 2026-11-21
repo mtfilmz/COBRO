@@ -3,7 +3,7 @@
   'use strict';
   var C = (window.Cobro = window.Cobro || {});
 
-  C.VERSION = '0.6.0';
+  C.VERSION = '0.6.1';
 
   /* Identificador único universal (lo exige FinTrack para los pagos). */
   C.uuid = function () {
@@ -156,6 +156,7 @@
     menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
     undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>',
     refresh: '<path d="M20 11a8 8 0 0 0-14.6-4.5L4 8"/><path d="M4 3v5h5"/><path d="M4 13a8 8 0 0 0 14.6 4.5L20 16"/><path d="M20 21v-5h-5"/>',
+    share: '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/>',
     cloud: '<path d="M17.5 19H7a5 5 0 1 1 .9-9.92A6 6 0 0 1 19.5 11 4 4 0 0 1 17.5 19z"/>'
   };
   C.icon = function (name, size, sw) {

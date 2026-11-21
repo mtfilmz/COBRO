@@ -1,4 +1,5 @@
-Novedades de Cobro 0.6.0:
-- Clientes compartidos con Game Fix en los dos sentidos (Ajustes › Game Fix): Cobro trae los clientes y contactos de Game Fix y le manda los suyos.
-- Repetidos: mismo teléfono = un solo cliente; mismo nombre con teléfono distinto = dos clientes. No se borra ni se pisa ningún dato.
-- Al facturar, si hay varios clientes con el mismo nombre, la lista muestra cada uno con su teléfono para elegir el correcto.
+Novedades de Cobro 0.6.1:
+- WhatsApp directo: el botón WhatsApp abre el chat del número de "Enviar a" con la imagen de la factura lista; solo tocas enviar. Si el teléfono tiene WhatsApp y WhatsApp Business, pregunta una vez cuál usar.
+- Mensaje de texto directo: el botón Mensaje abre la app de Mensajes con el número y la imagen de la factura adjunta.
+- En la computadora: WhatsApp copia la imagen y abre el chat del cliente (la pegas con Ctrl+V); Mensaje abre Enlace Móvil (Phone Link) con el número y la imagen copiada.
+- Ajustes › Facturación › Enviar facturas: elige qué WhatsApp usar en cada equipo.

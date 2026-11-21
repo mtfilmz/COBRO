@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "escritorio",
-  "description": "Solo en el programa de Windows: actualización automática y reinicio",
+  "description": "Solo en el programa de Windows: actualización automática, reinicio y abrir WhatsApp o Enlace Móvil",
   "windows": [
     "main"
   ],
@@ -12,6 +12,20 @@
   ],
   "permissions": [
     "updater:default",
-    "process:default"
+    "process:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        {
+          "url": "whatsapp:*"
+        },
+        {
+          "url": "whatsapp://*"
+        },
+        {
+          "url": "sms:*"
+        }
+      ]
+    }
   ]
 }

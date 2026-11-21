@@ -10,7 +10,7 @@ Versión de prueba 0.1.0.
 - **Inicio del administrador:** facturado, cobrado, por cobrar, totales por tipo y botón **Ocultar montos**.
 - **Inicio del empleado:** sin balance ni totales. Accesos rápidos, equipos en el taller y facturas recientes.
 - **Nueva factura:** Venta, Servicio o Reparación. En reparaciones: equipo, "IMEI, número de serie o modelo", hasta 3 fotos, falla, accesorios, garantía y estado del equipo. Numeración automática (VEN-00001, SER-00001, REP-00001).
-- **Detalle de factura:** hoja blanca para el cliente, impresión o PDF ("Microsoft Print to PDF"), WhatsApp, pagos parciales, estado del equipo, fotos y actividad. Las facturas no se borran, se anulan con motivo.
+- **Detalle de factura:** hoja blanca para el cliente, impresión o PDF ("Microsoft Print to PDF"), WhatsApp y Mensaje directos al número de "Enviar a" con la imagen JPG (en Windows, Mensaje usa Enlace Móvil), pagos parciales, estado del equipo, fotos y actividad. Las facturas no se borran, se anulan con motivo.
 - **Clientes, Catálogo y Reportes** (los reportes son solo para el administrador).
 - **5 temas globales:** Claro, Oscuro, Negro, Azul marino y Automático. La factura del cliente siempre sale en blanco.
 - **Importar historial de Factura:** respaldo `.json` o CSV. Conserva los números originales, sugiere el tipo de cada factura y el lote se puede revertir.

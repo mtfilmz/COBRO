@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Para saber si están instalados WhatsApp o WhatsApp Business (Android 11+). -->
+    <queries>
+        <package android:name="com.whatsapp" />
+        <package android:name="com.whatsapp.w4b" />
+    </queries>
     <application>
         <provider
             android:name="pr.supermobile.compartir.CompartirFileProvider"

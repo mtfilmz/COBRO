@@ -1,6 +1,6 @@
 [package]
 name = "cobro"
-version = "0.6.0"
+version = "0.6.1"
 description = "Cobro · facturación de Super Mobile Tech Repair"
 authors = ["Super Mobile Tech Repair"]
 edition = "2021"

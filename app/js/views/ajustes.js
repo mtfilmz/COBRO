@@ -87,7 +87,24 @@
       '<div class="grid2"><label class="field">Garantía por defecto en reparaciones<select class="input" name="warranty">' +
       C.WARRANTIES.map(function (w) { return '<option value="' + w + '"' + (bl.warrantyDefault === w ? ' selected' : '') + '>' + (w ? w + ' días' : 'Sin garantía') + '</option>'; }).join('') + '</select></label>' +
       '<label class="field">Métodos de pago (uno por línea)<textarea class="input" name="methods" rows="4">' + esc(bl.methods.join('\n')) + '</textarea></label></div>' +
-      '<div class="right-actions"><button class="btn primary" type="submit">Guardar</button></div></form>';
+      '<div class="right-actions"><button class="btn primary" type="submit">Guardar</button></div></form>' + envio();
+  }
+
+  /* Cómo se envía la factura en este equipo (se guarda solo aquí, no en la nube). */
+  function envio() {
+    if (!C.isDesktop()) return '';
+    var cur = '';
+    try { cur = localStorage.getItem(C.isAndroid() ? 'cobro-wa-android' : 'cobro-wa-pc') || ''; } catch (e) { cur = ''; }
+    var opts = C.isAndroid()
+      ? [['auto', 'Automático (pregunta si hay dos)'], ['whatsapp', 'WhatsApp'], ['business', 'WhatsApp Business']]
+      : [['web', 'Navegador: abre WhatsApp Web o el programa'], ['app', 'Programa de WhatsApp para Windows']];
+    if (!cur) cur = opts[0][0];
+    return '<section class="card pad stack"><h2 class="h2">Enviar facturas</h2>' +
+      '<p class="small muted">' + (C.isAndroid()
+        ? 'WhatsApp y Mensaje abren el chat del número de "Enviar a" con la imagen de la factura lista; solo tocas enviar.'
+        : 'WhatsApp copia la imagen y abre el chat del número de "Enviar a"; la pegas con Ctrl+V. Mensaje abre Enlace Móvil (Phone Link) con el número; necesitas tu teléfono Android vinculado en Enlace Móvil.') + '</p>' +
+      '<label class="field">' + (C.isAndroid() ? 'WhatsApp para enviar facturas' : 'Abrir WhatsApp con') + '<select class="input" id="wa-pref">' +
+      opts.map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === cur ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></label></section>';
   }
 
   function datos() {
@@ -330,6 +347,11 @@
         C.confirm('Desconectar FinTrack', 'Los pagos nuevos dejarán de enviarse. Lo que ya está en FinTrack no se borra. Desconecta también a Cobro en FinTrack.', 'Desconectar', true).then(function (ok) {
           if (ok) C.fintrackDisconnect().then(function () { C.toast('FinTrack desconectado.'); C.render(); }).catch(C.fail);
         });
+      });
+      var wp = root.querySelector('#wa-pref');
+      if (wp) wp.addEventListener('change', function () {
+        try { localStorage.setItem(C.isAndroid() ? 'cobro-wa-android' : 'cobro-wa-pc', wp.value); } catch (e) { /* sin almacenamiento */ }
+        C.toast('Guardado.');
       });
       var gk = root.querySelector('#gf-key');
       if (gk) {

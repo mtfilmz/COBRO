@@ -94,9 +94,9 @@
       return '<header class="page-head no-print"><div><a class="back" href="#/facturas">' + C.icon('back', 16) + 'Facturas</a>' +
         '<h1 class="h1-row">' + esc(inv.number) + ' ' + C.pill(v.status) + (inv.source === 'historial' ? '<span class="tag">Historial</span>' : '') + '</h1></div>' +
         '<div class="actions">' +
-        (C.isAndroid()
-          ? '<button type="button" class="btn" id="share">' + C.icon('chat', 16) + 'Compartir</button>'
-          : '<button type="button" class="btn" id="wa"' + (wa ? '' : ' disabled title="Agrega el teléfono del cliente"') + '>' + C.icon('chat', 16) + 'WhatsApp</button>') +
+        '<button type="button" class="btn" id="wa"' + (wa ? '' : ' disabled title="Agrega el número en Enviar a"') + '>' + C.icon('chat', 16) + 'WhatsApp</button>' +
+        (C.isDesktop() ? '<button type="button" class="btn" id="sms"' + (wa ? '' : ' disabled title="Agrega el número en Enviar a"') + '>' + C.icon('chat', 16) + 'Mensaje</button>' : '') +
+        (C.isAndroid() ? '<button type="button" class="btn" id="share">' + C.icon('share', 16) + 'Compartir</button>' : '') +
         '<button type="button" class="btn" id="saveimg">' + C.icon('image', 16) + 'Guardar imagen</button>' +
         (C.isAndroid() ? '' : '<button type="button" class="btn" id="print">' + C.icon('printer', 16) + 'Imprimir</button>') +
         (C.isAdmin() && !inv.voided ? '<button type="button" class="btn danger-text" id="void">Anular</button>' : '') + '</div></header>' +
@@ -141,24 +141,100 @@
         }).catch(C.fail).then(function () { busy(sh, false); });
       });
 
-      /* Windows: copia la imagen y abre el chat de WhatsApp del cliente para pegarla (Ctrl+V). */
+      var num = waNumber(inv.customer.sendTo || inv.customer.phone);
+      var who = inv.customer.sendTo || inv.customer.phone;
+      function lsGet(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
+      function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* sin almacenamiento */ } }
+
+      /* Android: imagen en la carpeta temporal para pasársela a WhatsApp o a Mensajes. */
+      function tempImage() {
+        return C.invoiceJpg(inv, C.view(inv)).then(function (bytes) {
+          return window.__TAURI__.core.invoke('archivo_temporal', { nombre: inv.number + '.jpg', contenidoB64: C.toBase64(bytes) });
+        });
+      }
+      /* Android: qué WhatsApp usar (si hay los dos, se pregunta una vez y se recuerda). */
+      function pickWhatsApp() {
+        var pref = lsGet('cobro-wa-android') || 'auto';
+        return window.__TAURI__.core.invoke('plugin:compartir|whatsapp_apps').then(function (a) {
+          a = a || {};
+          if (pref === 'business' && a.business) return 'business';
+          if (pref === 'whatsapp' && a.whatsapp) return 'whatsapp';
+          if (a.whatsapp && a.business) {
+            return C.modal({
+              title: '¿Con cuál WhatsApp envías las facturas?',
+              html: '<p class="muted">Este teléfono tiene WhatsApp y WhatsApp Business. Cobro recordará tu elección; puedes cambiarla en Ajustes › Facturación.</p>' +
+                '<div class="right-actions"><button type="submit" class="btn" data-pick="whatsapp">WhatsApp</button>' +
+                '<button type="submit" class="btn primary" data-pick="business">WhatsApp Business</button></div>',
+              hideActions: true,
+              onMount: function (dlg) {
+                dlg.querySelectorAll('[data-pick]').forEach(function (b) { b.addEventListener('click', function () { dlg._pick = b.getAttribute('data-pick'); }); });
+              },
+              onOk: function (dlg) { return dlg._pick || false; }
+            }).then(function (c) {
+              if (!c) { var e = new Error('cancelado'); e.cancel = true; throw e; }
+              lsSet('cobro-wa-android', c); return c;
+            });
+          }
+          if (a.business) return 'business';
+          if (a.whatsapp) return 'whatsapp';
+          throw new Error('WhatsApp no está instalado en este teléfono.');
+        });
+      }
+      /* Windows: copia la imagen al portapapeles; si no se puede, la guarda. Siempre la deja también en Documentos › Cobro › Facturas. */
+      function copyAndSave() {
+        return C.invoiceCanvas(inv, C.view(inv)).then(function (cv) {
+          var copied = C.canvasBytes(cv, 'image/png').then(function (png) {
+            if (!navigator.clipboard || !window.ClipboardItem) return false;
+            return navigator.clipboard.write([new ClipboardItem({ 'image/png': new Blob([png], { type: 'image/png' }) })]).then(function () { return true; }, function () { return false; });
+          });
+          var saved = C.canvasBytes(cv, 'image/jpeg', 0.92).then(function (jpg) { return C.saveImage(inv.number + '.jpg', jpg); }).catch(function () { return ''; });
+          return Promise.all([copied, saved]).then(function (r) { return { copied: r[0], path: r[1] || '' }; });
+        });
+      }
+
+      /* WhatsApp directo al número de "Enviar a". */
       var wa = root.querySelector('#wa');
       if (wa) wa.addEventListener('click', function () {
+        if (!num) { C.toast('Agrega el número en Enviar a.', 'error'); return; }
         busy(wa, true);
-        var num = waNumber(inv.customer.sendTo || inv.customer.phone);
-        C.invoiceCanvas(inv, C.view(inv)).then(function (cv) {
-          return C.canvasBytes(cv, 'image/png').then(function (png) {
-            if (!navigator.clipboard || !window.ClipboardItem) throw new Error('sin portapapeles');
-            return navigator.clipboard.write([new ClipboardItem({ 'image/png': new Blob([png], { type: 'image/png' }) })]).then(function () { return 'copiada'; });
-          }).catch(function () {
-            return C.canvasBytes(cv, 'image/jpeg', 0.92).then(function (jpg) { return C.saveImage(inv.number + '.jpg', jpg); }).then(function (path) { return 'guardada:' + (path || ''); });
+        var done;
+        if (C.isAndroid()) {
+          done = pickWhatsApp().then(function (app) {
+            return tempImage().then(function (path) {
+              return window.__TAURI__.core.invoke('plugin:compartir|share_whatsapp', { path: path, phone: num, text: caption(), whatsapp: app });
+            });
           });
-        }).then(function (how) {
-          var opened = C.openExternal('https://wa.me/' + num);
-          C.commit({ put: { audit: [C.auditRow('WhatsApp', 'Imagen de la factura preparada para ' + (inv.customer.sendTo || inv.customer.phone), inv.id)] } });
-          if (how === 'copiada') C.toast(opened ? 'Imagen copiada. En el chat de WhatsApp pégala con Ctrl+V.' : 'Imagen copiada. Abre WhatsApp y pégala con Ctrl+V.');
-          else C.toast('Imagen guardada' + (how.length > 9 ? ' en ' + how.slice(9) : '') + '. Adjúntala en el chat de WhatsApp.');
+        } else {
+          done = copyAndSave().then(function (r) {
+            var url = lsGet('cobro-wa-pc') === 'app' ? 'whatsapp://send?phone=' + num : 'https://wa.me/' + num;
+            C.openExternal(url);
+            C.toast(r.copied ? 'Imagen copiada. En el chat de WhatsApp pégala con Ctrl+V y envía.' : 'Imagen guardada' + (r.path ? ' en ' + r.path : '') + '. Adjúntala en el chat de WhatsApp.');
+          });
+        }
+        done.then(function () {
+          C.commit({ put: { audit: [C.auditRow('WhatsApp', 'Factura enviada por WhatsApp a ' + who, inv.id)] } });
         }).catch(C.fail).then(function () { busy(wa, false); });
+      });
+
+      /* Mensaje de texto (con la imagen) directo al número de "Enviar a". */
+      var sm = root.querySelector('#sms');
+      if (sm) sm.addEventListener('click', function () {
+        if (!num) { C.toast('Agrega el número en Enviar a.', 'error'); return; }
+        busy(sm, true);
+        var done;
+        if (C.isAndroid()) {
+          done = tempImage().then(function (path) {
+            return window.__TAURI__.core.invoke('plugin:compartir|share_sms', { path: path, phone: '+' + num, text: caption() });
+          });
+        } else {
+          done = copyAndSave().then(function (r) {
+            C.openExternal('sms:+' + num + '?body=' + encodeURIComponent(caption()));
+            C.toast('Se abre Enlace Móvil con el número. ' + (r.copied ? 'Pega la imagen con Ctrl+V' : 'Adjunta la imagen') + (r.path ? ' (también está en ' + r.path + ')' : '') + ' y envía.');
+          });
+        }
+        done.then(function () {
+          C.commit({ put: { audit: [C.auditRow('Mensaje', 'Factura enviada por mensaje de texto a ' + who, inv.id)] } });
+        }).catch(C.fail).then(function () { busy(sm, false); });
       });
 
       var pay = root.querySelector('#pay');
