@@ -1,5 +1,4 @@
-Novedades de Cobro 0.6.1:
-- WhatsApp directo: el botón WhatsApp abre el chat del número de "Enviar a" con la imagen de la factura lista; solo tocas enviar. Si el teléfono tiene WhatsApp y WhatsApp Business, pregunta una vez cuál usar.
-- Mensaje de texto directo: el botón Mensaje abre la app de Mensajes con el número y la imagen de la factura adjunta.
-- En la computadora: WhatsApp copia la imagen y abre el chat del cliente (la pegas con Ctrl+V); Mensaje abre Enlace Móvil (Phone Link) con el número y la imagen copiada.
-- Ajustes › Facturación › Enviar facturas: elige qué WhatsApp usar en cada equipo.
+Novedades de Cobro 0.7.0:
+- La copia en la nube se mudó a la base de datos de Game Fix: Cobro y Game Fix quedan en la misma base y ya no dependen de la app Factura.
+- Al actualizar, Cobro te avisa: entra en Ajustes › Nube con tu cuenta de Game Fix. Cobro sube solo todo lo que tiene en el equipo; no se pierde nada.
+- FinTrack y los clientes compartidos con Game Fix siguen igual.

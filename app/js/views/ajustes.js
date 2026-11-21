@@ -211,7 +211,7 @@
     var label = !on ? 'Sin conectar' : expired ? 'Vuelve a conectar' : n.status === 'sync' ? 'Sincronizando' : pend ? 'Cambios por subir' : n.status === 'offline' ? 'Sin internet' : n.status === 'error' ? 'Con problema' : 'Al día';
     var cls = !on ? 'void' : (expired || n.status === 'error') ? 'void' : (pend || n.status === 'sync' || n.status === 'offline') ? 'pend' : 'ok';
     var html = '<section class="card pad stack"><div class="card-head flat"><h2 class="h2">Copia en la nube</h2><span class="pill ' + cls + '">' + label + '</span></div>' +
-      '<p class="small muted">Cobro sigue guardando todo en esta computadora y funciona sin internet. Con la nube conectada, además sube una copia de clientes, facturas, pagos, catálogo, fotos y ajustes del negocio a la base de datos de Factura, con tu misma cuenta. Así no pierdes nada si la computadora se daña y puedes usar Cobro en otra computadora con los mismos datos.</p>';
+      '<p class="small muted">Cobro sigue guardando todo en esta computadora y funciona sin internet. Con la nube conectada, además sube una copia de clientes, facturas, pagos, catálogo, fotos y ajustes del negocio a la base de datos de Game Fix, con tu misma cuenta de Game Fix. Cobro y Game Fix quedan en la misma base. Así no pierdes nada si la computadora se daña y puedes usar Cobro en otra computadora con los mismos datos.</p>';
     if (!C.isDesktop()) return html + '<p class="notice">' + C.icon('info', 16) + 'La copia en la nube funciona en el programa de Windows.</p></section>';
     if (on && !expired) {
       html += '<div class="kpis"><div class="card kpi"><span class="muted">Cuenta</span><span class="strong wrap">' + esc(n.email || '') + '</span></div>' +
@@ -223,11 +223,12 @@
         '<button type="button" class="btn danger-text" id="nb-off">Desconectar</button></div>' +
         '<p class="small muted">Se sincroniza sola cada 2 minutos, unos segundos después de cada cambio y al volver el internet.</p></section>';
     } else {
-      html += (expired ? '<div class="notice danger">' + C.icon('info', 16) + '<div>La sesión venció. Los cambios siguen guardados aquí y se suben cuando vuelvas a conectar.</div></div>' : '') +
+      html += (C.nubeMoved && C.nubeMoved() ? '<div class="notice danger">' + C.icon('info', 16) + '<div><strong>La nube de Cobro se mudó a la base de Game Fix.</strong> Entra aquí con tu cuenta de Game Fix (la misma con la que abres Game Fix). Cobro subirá solo todo lo que tiene en este equipo; no se pierde nada.</div></div>' : '') +
+        (expired ? '<div class="notice danger">' + C.icon('info', 16) + '<div>La sesión venció. Los cambios siguen guardados aquí y se suben cuando vuelvas a conectar.</div></div>' : '') +
         '<form id="nb-form" class="stack" autocomplete="off">' +
-        '<div class="grid2"><label class="field">Correo de Factura<input class="input" type="email" name="email" value="' + esc(n.email || 'supermobilepr@gmail.com') + '"></label>' +
-        '<label class="field">Contraseña de Factura<input class="input" type="password" name="password" autocomplete="current-password"></label></div>' +
-        '<p class="small muted">Usa la misma cuenta con la que entras a Factura. La contraseña no se guarda en Cobro; solo se usa para iniciar la sesión.</p>' +
+        '<div class="grid2"><label class="field">Correo de Game Fix<input class="input" type="email" name="email" value="' + esc(n.email || 'supermobilepr@gmail.com') + '"></label>' +
+        '<label class="field">Contraseña de Game Fix<input class="input" type="password" name="password" autocomplete="current-password"></label></div>' +
+        '<p class="small muted">Usa la misma cuenta con la que entras a Game Fix. La contraseña no se guarda en Cobro; solo se usa para iniciar la sesión.</p>' +
         '<div class="actions-left"><button type="submit" class="btn primary" id="nb-connect">' + C.icon('cloud', 16) + 'Conectar</button></div></form>' +
         '<div class="notice">' + C.icon('info', 16) + '<div><strong>En otra computadora o teléfono:</strong> instala Cobro, crea el administrador y conecta aquí con la misma cuenta. Se bajan todos los datos. No vuelvas a importar el historial de Factura allí, porque saldría repetido.</div></div></section>';
     }
@@ -398,8 +399,8 @@
         var btn = root.querySelector('#nb-connect');
         var email = nf.email.value.trim().toLowerCase();
         var password = nf.password.value;
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return C.toast('Escribe el correo con el que entras a Factura.', 'error');
-        if (!password) return C.toast('Escribe la contraseña de Factura.', 'error');
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return C.toast('Escribe el correo con el que entras a Game Fix.', 'error');
+        if (!password) return C.toast('Escribe la contraseña de Game Fix.', 'error');
         btn.disabled = true;
         btn.lastChild.textContent = 'Conectando…';
         C.nubeConnect(email, password).then(function () {

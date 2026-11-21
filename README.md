@@ -41,7 +41,7 @@ Si un paso falla, abre la ejecución en **Actions**, copia el mensaje de error y
 
 ## Copia en la nube
 
-- **Ajustes › Nube:** Cobro entra con la cuenta de Factura (correo y contraseña; la contraseña no se guarda) y sube una copia de clientes, facturas, pagos, catálogo, fotos, lotes, ajustes del negocio y numeración a la tabla `cobro_records` de la base de datos de Factura.
+- **Ajustes › Nube:** Cobro entra con la cuenta de Game Fix (correo y contraseña; la contraseña no se guarda) y sube una copia de clientes, facturas, pagos, catálogo, fotos, lotes, ajustes del negocio y numeración a la tabla `cobro_records` de la base de datos de Game Fix (Supabase `tbkptuvpzwvdjqmsbmeh`). Cobro y Game Fix comparten esa base. Hasta la 0.6.x la copia estaba en la base de Factura; al actualizar, Cobro cierra esa sesión y pide entrar con Game Fix.
 - Cada fila es de un solo usuario (seguridad por fila). Gana el cambio más reciente; la numeración siempre toma el mayor.
 - Sin internet, los cambios esperan en cola y se suben solos. Los tokens de la sesión se guardan en `nube.json`, en la carpeta de datos de la app, fuera de los respaldos.
 - En otra computadora: instalar Cobro, crear el administrador y conectar la nube. No volver a importar el historial de Factura allí.

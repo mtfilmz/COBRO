@@ -1,4 +1,4 @@
-/* Cobro · copia en la nube (base de datos de Factura).
+/* Cobro · copia en la nube (base de datos de Game Fix, compartida con Game Fix).
    Todo sigue guardándose primero en este equipo. Cuando hay internet, Cobro sube los cambios
    (clientes, facturas, pagos, catálogo, fotos, lotes, ajustes del negocio y numeración) y baja
    los que se hicieron en otro equipo. Gana el cambio más reciente; la numeración toma el mayor.
@@ -7,9 +7,11 @@
   'use strict';
   var C = window.Cobro;
 
-  /* Base de datos de Factura (Lovable Cloud). La clave publicable es pública: ya va dentro de Factura. */
-  var BASES = ['https://c--b118dab9-6c64-4457-9bb5-cd817118d220-prod.lovable.cloud', 'https://dqxynztzonvodwekzlnu.supabase.co'];
-  var APIKEY = 'sb_publishable__qsKtI6tF3hC2sTSd2LvlQ_eOV82wux';
+  /* Base de datos de Game Fix (Supabase). La clave es la pública (anon): ya va dentro de Game Fix.
+     Hasta la 0.6.x la copia estaba en la base de Factura; NUBE_ID marca a cuál está conectado este equipo. */
+  var BASES = ['https://tbkptuvpzwvdjqmsbmeh.supabase.co'];
+  var APIKEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRia3B0dXZwend2ZGpxbXNibWVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxNzM2NTMsImV4cCI6MjA5MTc0OTY1M30.4oXZm3fff6bWx6bZIz96_5gNN-41XZfjEXafx6EbndE';
+  var NUBE_ID = 'gamefix';
   var PATH = '/rest/v1/cobro_records';
   var LS = 'cobro-nube';
   var ORDER = ['settings', 'counters', 'customers', 'catalog', 'invoices', 'payments', 'batches', 'photos'];
@@ -27,6 +29,20 @@
   function pendingCount() { return Object.keys(C.syncq).length; }
   function persistQueue() { return C.commit({ put: { kv: [{ key: 'syncq', value: C.syncq }] }, remote: true }); }
 
+  /* Mudanza: si este equipo seguía conectado a la nube vieja (Factura), se cierra esa sesión y se pide entrar
+     con la cuenta de Game Fix. Al conectar, Cobro sube todo lo que tiene en el equipo a la base nueva. */
+  (function () {
+    var s = state();
+    if (!s.on || s.nube === NUBE_ID) return;
+    s.on = false;
+    s.moved = true;
+    s.cursor = null;
+    saveState(s);
+    C.nubeOn = false;
+    if (C.isDesktop()) invoke('nube_desconectar').catch(function () { /* sin sesión vieja que cerrar */ });
+  })();
+  C.nubeMoved = function () { return !C.nubeOn && !!state().moved; };
+
   var st0 = state();
   C.nube = { status: C.nubeOn ? 'pend' : 'off', error: '', lastSync: st0.lastSync || 0, email: st0.email || '', progress: null };
 
@@ -36,7 +52,7 @@
     if (r.status >= 200 && r.status < 300) return;
     var msg = '';
     try { var b = JSON.parse(r.body || '{}'); msg = b.message || b.error_description || b.error || ''; } catch (e) { msg = ''; }
-    if (r.status === 401) throw NubeError('La sesión de la nube venció. Vuelve a conectar con tu cuenta de Factura.', 'auth');
+    if (r.status === 401) throw NubeError('La sesión de la nube venció. Vuelve a conectar con tu cuenta de Game Fix.', 'auth');
     if (r.status === 403) throw NubeError('La nube no permitió el cambio (permiso denegado).', 'error');
     if (r.status >= 500 || r.status === 429) throw NubeError('La nube no respondió bien (' + r.status + '). Se reintenta solo.', 'retry');
     throw NubeError('La nube rechazó los datos (' + r.status + ')' + (msg ? ': ' + msg : '.'), 'error');
@@ -242,7 +258,7 @@
     paint();
     var failure = null;
     running = invoke('nube_estado').then(function (est) {
-      if (!est.conectado) throw NubeError('La sesión de la nube venció. Vuelve a conectar con tu cuenta de Factura.', 'auth');
+      if (!est.conectado) throw NubeError('La sesión de la nube venció. Vuelve a conectar con tu cuenta de Game Fix.', 'auth');
       return push().then(pull);
     }).then(function (changed) {
       C.nube.lastSync = Date.now();
@@ -283,6 +299,8 @@
       var s = state();
       if (s.userId && s.userId !== acc.user_id) { s.cursor = null; C.syncq = {}; }
       s.on = true;
+      s.nube = NUBE_ID;
+      s.moved = false;
       s.email = acc.email;
       s.userId = acc.user_id;
       s.connectedAt = s.connectedAt && s.userId === acc.user_id ? s.connectedAt : Date.now();
@@ -301,6 +319,7 @@
     return invoke('nube_desconectar').then(function () {
       var s = state();
       s.on = false;
+      s.moved = false;
       saveState(s);
       C.nubeOn = false;
       C.syncq = {};
@@ -329,11 +348,12 @@
     sync: ['refresh', 'Sincronizando…', 'Subiendo y bajando cambios de la nube', 'pend'],
     offline: ['cloud', 'Sin internet · se sube luego', 'Todo queda guardado en este equipo y se sube al volver la conexión', 'pend'],
     auth: ['cloud', 'Nube: vuelve a conectar', 'Ajustes › Nube', 'bad'],
+    moved: ['cloud', 'Nube: entra con Game Fix', 'La copia en la nube ahora está en la base de Game Fix. Ajustes › Nube', 'bad'],
     error: ['cloud', 'Nube: revisa Ajustes', 'Ajustes › Nube', 'bad']
   };
 
   function chipText() {
-    var st = C.nubeOn ? C.nube.status : 'off';
+    var st = C.nubeOn ? C.nube.status : (C.nubeMoved() ? 'moved' : 'off');
     if (st === 'ok' || st === 'pend') st = pendingCount() ? 'pend' : 'ok';
     var c = CHIP[st] || CHIP.off;
     var text = c[1];

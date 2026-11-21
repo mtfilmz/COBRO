@@ -363,8 +363,8 @@ async fn fintrack_enviar_pago(
     .await
 }
 
-/* ---------- Copia en la nube (base de datos de Factura) ----------
-Cobro entra con la misma cuenta de Factura. La contraseña nunca se guarda: solo los
+/* ---------- Copia en la nube (base de datos de Game Fix, compartida con Game Fix) ----------
+Cobro entra con la misma cuenta de Game Fix. La contraseña nunca se guarda: solo los
 tokens de la sesión, aquí en la carpeta de datos de la app (fuera de los respaldos).
 Todas las llamadas a la nube salen desde este lado y solo a la tabla cobro_records. */
 
@@ -501,9 +501,9 @@ fn mensaje_login(v: &Value) -> String {
     .join(" ")
     .to_lowercase();
     if texto.contains("not confirmed") {
-        "Tu correo todavía no está confirmado en Factura.".into()
+        "Tu correo todavía no está confirmado en Game Fix.".into()
     } else if texto.contains("invalid") || texto.contains("credentials") {
-        "Correo o contraseña incorrectos. Usa los mismos con los que entras a Factura.".into()
+        "Correo o contraseña incorrectos. Usa los mismos con los que entras a Game Fix.".into()
     } else {
         "No se pudo iniciar sesión en la nube.".into()
     }
@@ -530,10 +530,10 @@ async fn nube_conectar(
     let _guardia = candado_nube().lock().await;
     let email = email.trim().to_string();
     if email.is_empty() || !email.contains('@') || email.len() > 200 {
-        return Err("Escribe el correo con el que entras a Factura.".into());
+        return Err("Escribe el correo con el que entras a Game Fix.".into());
     }
     if password.is_empty() || password.len() > 500 {
-        return Err("Escribe la contraseña de Factura.".into());
+        return Err("Escribe la contraseña de Game Fix.".into());
     }
     if apikey.is_empty() || apikey.len() > 300 || !apikey.chars().all(|c| c.is_ascii_graphic()) {
         return Err("Falta la clave pública de la nube.".into());
