@@ -409,3 +409,8 @@ form .table th, form .table td { padding-left: 8px; padding-right: 8px; }
   .paper-wrap { max-width: none; }
   .paper { border: 0; box-shadow: none; padding: 0; border-radius: 0; }
 }
+
+/* Ajustes › Game Fix: volver a conectar con un código nuevo */
+.relink { border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; }
+.relink summary { cursor: pointer; }
+.relink[open] summary { margin-bottom: 8px; }

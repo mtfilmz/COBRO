@@ -183,12 +183,15 @@
         (g.lastSync ? '<span class="small muted">' + (l.added || 0) + ' nuevos · ' + (l.sent || 0) + ' enviados esa vez</span>' : '') + '</div>' +
         '<div class="card kpi"><span class="muted">Clientes traídos de Game Fix</span><span class="amount-md">' + tot.brought + '</span><span class="small muted">' + tot.linked + ' de Cobro unidos con Game Fix</span></div>' +
         '<div class="card kpi"><span class="muted">Clientes de Cobro en Game Fix</span><span class="amount-md">' + tot.inGf + '</span><span class="small muted">' + tot.conflicts + ' con datos distintos</span></div></div>' +
-        (g.broken ? '<div class="notice danger">' + C.icon('info', 16) + '<div>Game Fix no aceptó la conexión. Revisa que la clave sea la misma en las dos apps o vuelve a vincular.</div></div>' : '') +
+        (g.broken ? '<div class="notice danger">' + C.icon('info', 16) + '<div>Game Fix no aceptó la conexión. Si generaste un código nuevo en Game Fix, pégalo abajo en <strong>Conectar otra vez</strong>.</div></div>' : '') +
         (g.receiveOff ? '<div class="notice">' + C.icon('info', 16) + '<div>Para mandar los clientes de Cobro, activa <strong>Recibir clientes de Tech Repair</strong> en Game Fix › Configuración › Clientes · Tech Repair.</div></div>' : '') +
         ((l.conflicts || 0) ? '<div class="notice">' + C.icon('info', 16) + '<div>Hay clientes con datos distintos en las dos apps. En Game Fix › Clientes eliges cuál conservar.</div></div>' : '') +
         (C.gamefix && C.gamefix.error && C.gamefix.status === 'error' ? '<div class="notice danger">' + C.icon('info', 16) + '<div>' + esc(C.gamefix.error) + '</div></div>' : '') +
         '<div class="actions-left"><button type="button" class="btn" id="gf-sync">' + C.icon('refresh', 16) + 'Sincronizar ahora</button>' +
         '<button type="button" class="btn danger-text" id="gf-off">Desconectar</button></div>' +
+        '<details class="relink"' + (g.broken ? ' open' : '') + '><summary class="strong">Conectar otra vez con un código nuevo</summary>' +
+        '<div class="stack-sm"><span class="small muted">Si en Game Fix tocaste <em>Generar código de clientes</em>, copia ese código y pégalo aquí antes de que venza. La clave privada de este equipo se queda igual.</span>' +
+        '<div class="code-row"><input class="input" id="gf-code" placeholder="Código de 64 caracteres" autocomplete="off"><button type="button" class="btn primary" id="gf-connect">Conectar</button></div></div></details>' +
         '<p class="small muted">Se sincroniza sola al abrir Cobro y cada 30 minutos.</p></section>';
     }
     return head +
@@ -389,7 +392,7 @@
       });
       var go = root.querySelector('#gf-off');
       if (go) go.addEventListener('click', function () {
-        C.confirm('Desconectar Game Fix', 'Cobro dejará de traer y mandar clientes. Los clientes que ya están en Cobro se quedan. Para cortar el acceso del todo, toca también Desconectar clientes en Game Fix.', 'Desconectar', true).then(function (ok) {
+        C.confirm('Desconectar Game Fix', 'Cobro dejará de traer y mandar clientes y se borra la clave privada de este equipo (para volver a conectar habrá que crear una clave nueva y guardarla en Game Fix). Los clientes que ya están en Cobro se quedan. Si solo generaste un código nuevo en Game Fix, mejor usa Conectar otra vez.', 'Desconectar', true).then(function (ok) {
           if (ok) C.gamefixDisconnect().then(function () { C.toast('Game Fix desconectado.'); C.render(); }).catch(C.fail);
         });
       });
