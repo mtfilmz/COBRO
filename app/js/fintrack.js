@@ -1,6 +1,7 @@
 /* Cobro · conexión con FinTrack: cada pago nuevo se envía como ingreso.
    Sin internet los pagos esperan en una cola y se envían solos al volver la conexión.
-   FinTrack no duplica: el mismo pago (mismo identificador y mismos datos) devuelve el mismo recibo. */
+   FinTrack no duplica: el mismo pago (mismo identificador y mismos datos) devuelve el mismo recibo.
+   Los pagos cobrados en otro equipo (que llegan por la nube) también los envía el equipo conectado a FinTrack. */
 (function () {
   'use strict';
   var C = window.Cobro;
@@ -57,9 +58,59 @@
 
   function save(rows) { return rows.length ? C.commit({ put: { outbox: rows } }) : Promise.resolve(); }
 
+  /* Desde cuándo Cobro manda pagos a FinTrack. Se guarda en los ajustes de facturación, que viajan por la nube,
+     para que cualquier equipo conectado a FinTrack sepa desde qué pago tiene que enviar. */
+  /* Primera vez que Cobro se conectó a FinTrack (18 nov 2026, 8:51 a. m.). Sirve de respaldo si el equipo que
+     se conectó primero ya no se usa: así un equipo conectado después también recupera los pagos atrasados. */
+  var INICIO = Date.parse('2026-11-18T08:51:00-04:00');
+  function desde() {
+    var vals = [Number((C.settings.billing || {}).fintrackDesde) || 0, Number(cfg().connectedAt) || 0, INICIO]
+      .filter(function (v) { return v > 0; });
+    return vals.length ? Math.min.apply(null, vals) : 0;
+  }
+  function guardarDesde() {
+    var b = Number(cfg().connectedAt) || 0;
+    var a = Number((C.settings.billing || {}).fintrackDesde) || 0;
+    if (!b || (a && a <= b)) return Promise.resolve();
+    var s = JSON.parse(JSON.stringify(C.settings));
+    s.billing.fintrackDesde = b;
+    return C.commit({ put: { kv: [{ key: 'settings', value: s }] } });
+  }
+
+  /* Pagos nuevos que no están en la cola de este equipo (cobrados en otro equipo, o en este antes de tener la
+     conexión cargada): se ponen en la cola. Solo pagos hechos desde que Cobro está conectado a FinTrack y de
+     facturas no anuladas. Se espera ESPERA para dejar que el equipo donde se cobró lo mande primero.
+     FinTrack nunca duplica: si ya tiene el pago, lo dice y aquí se marca como enviado. */
+  var ESPERA = 10 * 60 * 1000;
+  C.fintrackQueueMissing = function () {
+    if (!C.fintrackConnected()) return Promise.resolve(0);
+    var since = desde();
+    if (!since) return Promise.resolve(0);
+    var limite = Date.now() - ESPERA;
+    var known = {};
+    C.data.outbox.forEach(function (o) { known[o.id] = true; });
+    var invById = {};
+    C.data.invoices.forEach(function (i) { invById[i.id] = i; });
+    var rows = [];
+    C.data.payments.forEach(function (p) {
+      if (known[p.id] || p.source !== 'nuevo' || !((p.createdAt || 0) >= since) || p.createdAt > limite) return;
+      var inv = invById[p.invoiceId];
+      if (!inv || inv.voided) return;
+      var row = C.fintrackOutboxRow(p, inv);
+      if (row) { row.createdAt = p.createdAt || row.createdAt; row.otroEquipo = true; rows.push(row); }
+    });
+    return save(rows).then(function () { return rows.length; });
+  };
+
   /* Envía los pagos pendientes, uno por uno, en orden. */
   C.fintrackSync = function () {
     if (syncing || !C.isDesktop() || !C.fintrackConnected() || !navigator.onLine) return Promise.resolve();
+    syncing = true;
+    return guardarDesde().then(C.fintrackQueueMissing).then(function () { syncing = false; return enviar(); }, function (err) { syncing = false; throw err; });
+  };
+
+  function enviar() {
+    if (syncing || !C.fintrackConnected() || !navigator.onLine) return Promise.resolve();
     var now = Date.now();
     var queue = C.data.outbox.filter(function (o) { return o.status === 'pendiente' && (o.nextAt || 0) <= now; })
       .sort(function (a, b) { return a.createdAt - b.createdAt; });
@@ -78,7 +129,9 @@
           if (r.status === 200 && body && body.status === 'confirmed' && body.payment_id === row.id && body.binding_id === bindingId && UUID.test(String(body.movement_id || ''))) {
             next.status = 'enviado'; next.movementId = body.movement_id; next.sentAt = Date.now(); next.lastError = '';
           } else if (r.status === 409) {
-            next.status = 'conflicto'; next.lastError = (body && body.error) || 'FinTrack ya tiene este pago con otros datos.';
+            /* FinTrack ya tiene este pago (lo mandó otro equipo con su propia conexión): ya está en FinTrack. */
+            next.status = 'enviado'; next.yaEstaba = true; next.sentAt = Date.now(); next.movementId = '';
+            next.lastError = 'Ya estaba en FinTrack (lo envió otro equipo).';
           } else if (r.status === 400 || r.status === 413) {
             next.status = 'rechazado'; next.lastError = (body && body.error) || 'FinTrack no aceptó el pago.';
           } else if (r.status === 403 || r.status === 401) {
@@ -96,7 +149,7 @@
       });
     });
     return chain.then(function () { syncing = false; }, function () { syncing = false; });
-  };
+  }
 
   /* Reintentar ya, sin esperar. */
   C.fintrackRetry = function () {
@@ -149,6 +202,7 @@
       s.fintrack.enabled = true;
       s.fintrack.connectedAt = Date.now();
       s.fintrack.since = C.today();
+      if (!s.billing.fintrackDesde) s.billing.fintrackDesde = s.fintrack.connectedAt;
       return C.commit({ put: { kv: [{ key: 'settings', value: s }], audit: [C.auditRow('FinTrack', 'Cobro conectado con FinTrack')] } });
     });
   };
