@@ -71,9 +71,10 @@
         (v.balance > 0 && !inv.voided && C.can('pagos') ? '<button type="button" class="btn primary block lg" id="pay">Registrar pago</button>' : '') +
         (v.balance > 0 && !inv.voided && !C.can('pagos') ? '<p class="small muted">Para cobrar el saldo pide al administrador el permiso "Registrar pagos".</p>' : '') +
         (pays.length ? '<div class="pays">' + pays.map(function (p) {
-          var ft = C.fintrackRowFor ? C.fintrackRowFor(p.id) : null;
+          var ft = C.ftEstado ? C.ftEstado(p, inv) : null;
+          var ftCls = !ft ? '' : ft.key === 'enviado' ? 'ok-text' : ft.key === 'problema' ? 'danger-text' : ft.key === 'no_aplica' ? 'muted' : 'pend-text';
           return '<div class="pay-row"><span><span class="strong">' + C.money(p.amount) + '</span> <span class="muted">' + esc(p.method) + '</span>' +
-            (ft ? '<span class="small block ' + (ft.status === 'enviado' ? 'ok-text' : ft.status === 'pendiente' ? 'pend-text' : 'muted') + '" title="' + esc(ft.lastError || '') + '">' + esc(C.FT_LABEL[ft.status] || ft.status) + '</span>' : '') +
+            (ft && ft.key !== 'no_aplica' ? '<span class="small block ' + ftCls + '" title="' + esc(ft.detail || '') + '">' + esc(ft.label) + '</span>' : '') +
             '</span><span class="small muted">' + esc(C.fmtDate(p.date)) + '</span></div>';
         }).join('') + '</div>' : '') + '</section>';
 

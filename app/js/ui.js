@@ -93,8 +93,9 @@
       }).join('') + '</div></div>';
   };
 
-  function navItem(hash, icon, label, active) {
-    return '<a href="#/' + hash + '" class="nav-item' + (active ? ' on' : '') + '"' + (active ? ' aria-current="page"' : '') + '>' + C.icon(icon) + '<span>' + esc(label) + '</span></a>';
+  function navItem(hash, icon, label, active, badge) {
+    return '<a href="#/' + hash + '" class="nav-item' + (active ? ' on' : '') + '"' + (active ? ' aria-current="page"' : '') + '>' + C.icon(icon) + '<span>' + esc(label) + '</span>' +
+      (badge ? '<span class="nav-badge" aria-label="' + badge + ' pendientes">' + badge + '</span>' : '') + '</a>';
   }
 
   function shell(active, content) {
@@ -102,6 +103,7 @@
     var admin = C.isAdmin();
     var b = C.settings.business;
     var items = [navItem('inicio', 'home', 'Inicio', active === 'inicio'), navItem('facturas', 'file', 'Facturas', active === 'facturas')];
+    if (C.views.pendientes && C.views.pendientes.allowed()) items.push(navItem('pendientes', 'clipboard', 'Pendientes', active === 'pendientes', C.pendCount ? C.pendCount() : 0));
     if (C.can('clientes')) items.push(navItem('clientes', 'users', 'Clientes', active === 'clientes'));
     items.push(navItem('catalogo', 'box', 'Catálogo', active === 'catalogo'));
     if (admin) items.push(navItem('reportes', 'chart', 'Reportes', active === 'reportes'));

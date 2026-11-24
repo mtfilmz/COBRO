@@ -67,6 +67,7 @@
     title: 'Facturas',
     render: function () {
       return '<header class="page-head"><div><p class="small muted">Ventas, servicios y reparaciones</p><h1>Facturas</h1></div><div class="actions">' +
+        (C.views.pendientes && C.views.pendientes.allowed() ? '<a class="btn pend-link" href="#/pendientes">' + C.icon('clipboard', 16) + 'Pendientes' + (C.pendCount() ? ' <span class="nav-badge">' + C.pendCount() + '</span>' : '') + '</a>' : '') +
         (C.isAdmin() ? '<button type="button" class="btn" id="export">' + C.icon('download', 16) + 'Exportar CSV</button>' : '') +
         (C.can('crear') ? '<a class="btn primary" href="#/nueva">' + C.icon('plus', 18, 2) + 'Nueva factura</a>' : '') + '</div></header>' +
         '<div class="toolbar"><div class="seg" role="group" aria-label="Tipo de factura" id="tabs">' + tabsHtml() + '</div>' +

@@ -106,7 +106,44 @@
   C.fintrackSync = function () {
     if (syncing || !C.isDesktop() || !C.fintrackConnected() || !navigator.onLine) return Promise.resolve();
     syncing = true;
-    return guardarDesde().then(C.fintrackQueueMissing).then(function () { syncing = false; return enviar(); }, function (err) { syncing = false; throw err; });
+    return guardarDesde().then(C.fintrackQueueMissing).then(function () { syncing = false; return enviar(); }, function (err) { syncing = false; throw err; })
+      .then(function () { return marcarPagos(C.data.outbox.filter(function (o) { return o.status === 'enviado'; })); });
+  };
+
+  /* La marca "Enviado a FinTrack" se guarda en el pago, que viaja por la nube: así todos los equipos (también los
+     que no están conectados a FinTrack) saben qué pagos ya llegaron. */
+  function marcarPagos(rows) {
+    var byId = {};
+    C.data.payments.forEach(function (p) { byId[p.id] = p; });
+    var put = [];
+    rows.forEach(function (o) {
+      var p = byId[o.id];
+      if (!p || (p.ft && p.ft.status === 'enviado')) return;
+      put.push(Object.assign({}, p, { ft: { status: 'enviado', at: o.sentAt || Date.now(), yaEstaba: !!o.yaEstaba } }));
+    });
+    return put.length ? C.commit({ put: { payments: put } }) : Promise.resolve();
+  }
+
+  C.fintrackDesde = function () { return desde(); };
+
+  /* Estado de un pago frente a FinTrack, para la página Pendientes y el detalle de la factura.
+     key: enviado | pendiente | problema | sin_enviar | no_aplica */
+  C.ftEstado = function (p, inv) {
+    var since = desde();
+    if (p.source !== 'nuevo' || !UUID.test(p.id || '') || !(C.num(p.amount) > 0) || (since && (p.createdAt || 0) < since)) {
+      return { key: 'no_aplica', label: 'No se envía', detail: p.source === 'nuevo' ? 'Pago anterior a la conexión con FinTrack.' : 'Historial importado: ya estaba reportado.' };
+    }
+    if (p.ft && p.ft.status === 'enviado') return { key: 'enviado', label: 'Enviado a FinTrack', detail: '' };
+    var o = C.fintrackRowFor(p.id);
+    if (o && o.status === 'enviado') return { key: 'enviado', label: 'Enviado a FinTrack', detail: '' };
+    if (inv && inv.voided) return { key: 'no_aplica', label: 'No se envía', detail: 'La factura está anulada.' };
+    if (o && o.status === 'cancelado') return { key: 'no_aplica', label: 'No se envía', detail: 'La factura se anuló antes de enviarlo.' };
+    if (o && (o.status === 'conflicto' || o.status === 'rechazado')) return { key: 'problema', label: 'Rechazado por FinTrack', detail: o.lastError || 'FinTrack no aceptó el pago.' };
+    if (o && o.status === 'pendiente') return { key: 'pendiente', label: 'Pendiente de enviar', detail: o.lastError || 'En cola: se envía en cuanto haya internet.' };
+    if (C.fintrackConnected()) {
+      return { key: 'sin_enviar', label: 'Sin enviar', detail: (Date.now() - (p.createdAt || 0)) < 10 * 60 * 1000 ? 'Cobrado en otro equipo: se envía en unos minutos.' : 'Se envía en la próxima revisión (cada 2 minutos).' };
+    }
+    return { key: 'sin_enviar', label: 'Sin enviar', detail: 'Lo envía el equipo conectado a FinTrack.' };
   };
 
   function enviar() {
@@ -141,7 +178,7 @@
             next.lastError = (body && body.error) || ('FinTrack respondió ' + r.status + '. Se reintentará.');
             next.nextAt = Date.now() + Math.min(60, Math.pow(2, next.tries)) * 60 * 1000;
           }
-          return save([next]);
+          return save([next]).then(function () { return next.status === 'enviado' ? marcarPagos([next]) : null; });
         }, function (err) {
           stop = true;
           return save([Object.assign({}, row, { lastError: String((err && err.message) || err), nextAt: Date.now() + 2 * 60 * 1000 })]);
