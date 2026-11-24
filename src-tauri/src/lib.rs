@@ -610,7 +610,6 @@ async fn nube_desconectar(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
 /// Qué puede pedir Cobro a la base de Game Fix con la sesión de la nube:
 /// - su propia copia (`cobro_records`);
 /// - los clientes de Game Fix: leer, agregar y completar datos vacíos (nunca borrar);
@@ -651,6 +650,7 @@ mod pruebas_nube {
     }
 }
 
+#[tauri::command]
 async fn nube_pedir(
     app: tauri::AppHandle,
     metodo: String,
