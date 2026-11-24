@@ -65,3 +65,7 @@ app/            La aplicación (HTML, CSS y JavaScript sin dependencias)
 src-tauri/      Envoltura de Windows (Tauri 2)
 .github/        Proceso que arma el .exe en GitHub
 ```
+
+## Clientes con Game Fix (0.8.0)
+
+Cobro y Game Fix comparten la misma base de datos (Supabase de Game Fix) y la misma cuenta. Con la nube conectada (Ajustes › Nube), Cobro lee los clientes de Game Fix (`clients`) y el contacto de sus reparaciones (`repairs`: solo `id, cliente, telefono, email`), y guarda en `clients` los clientes de Cobro con `source_key = 'cobro:<id>'` (índice único: no se duplican). Solo completa campos vacíos; nunca borra ni pisa. El programa limita las rutas permitidas en `ruta_nube_permitida` (lib.rs). Hasta la 0.7.x se usaba un código y una clave privada (`tech-repair-clients`); al actualizar se borra esa clave del equipo.

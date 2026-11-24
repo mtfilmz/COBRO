@@ -611,6 +611,46 @@ async fn nube_desconectar(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+/// Qué puede pedir Cobro a la base de Game Fix con la sesión de la nube:
+/// - su propia copia (`cobro_records`);
+/// - los clientes de Game Fix: leer, agregar y completar datos vacíos (nunca borrar);
+/// - de las reparaciones, solo leer nombre, teléfono y correo (nunca costos, fotos ni cambios).
+fn ruta_nube_permitida(metodo: &str, ruta: &str) -> bool {
+    if ruta.contains("..") || ruta.len() > 2000 || ruta.contains('#') {
+        return false;
+    }
+    if ruta.starts_with("/rest/v1/cobro_records") {
+        return true;
+    }
+    if ruta == "/rest/v1/clients" || ruta.starts_with("/rest/v1/clients?") {
+        return matches!(metodo, "GET" | "POST" | "PATCH");
+    }
+    if ruta.starts_with("/rest/v1/repairs?select=id,cliente,telefono,email&") {
+        return metodo == "GET" && ruta.matches("select=").count() == 1;
+    }
+    false
+}
+
+#[cfg(test)]
+mod pruebas_nube {
+    use super::ruta_nube_permitida as ok;
+
+    #[test]
+    fn rutas() {
+        assert!(ok("POST", "/rest/v1/cobro_records?on_conflict=user_id,store,id"));
+        assert!(ok("GET", "/rest/v1/clients?select=id,cliente&order=id.asc&limit=1000"));
+        assert!(ok("POST", "/rest/v1/clients"));
+        assert!(ok("PATCH", "/rest/v1/clients?id=eq.0b0c"));
+        assert!(!ok("DELETE", "/rest/v1/clients?id=eq.0b0c"));
+        assert!(ok("GET", "/rest/v1/repairs?select=id,cliente,telefono,email&user_id=eq.u&order=id.asc"));
+        assert!(!ok("PATCH", "/rest/v1/repairs?select=id,cliente,telefono,email&id=eq.1"));
+        assert!(!ok("GET", "/rest/v1/repairs?select=*&id=eq.1"));
+        assert!(!ok("GET", "/rest/v1/repairs?select=id,cliente,telefono,email&select=costo_reparacion"));
+        assert!(!ok("GET", "/rest/v1/repair_payments?select=*"));
+        assert!(!ok("GET", "/rest/v1/clients/../repair_payments"));
+    }
+}
+
 async fn nube_pedir(
     app: tauri::AppHandle,
     metodo: String,
@@ -618,7 +658,7 @@ async fn nube_pedir(
     cuerpo: Option<String>,
     prefer: Option<String>,
 ) -> Result<Respuesta, String> {
-    if !ruta.starts_with("/rest/v1/cobro_records") || ruta.contains("..") || ruta.len() > 2000 {
+    if !ruta_nube_permitida(&metodo, &ruta) {
         return Err("Ruta no permitida.".into());
     }
     let metodo = match metodo.as_str() {

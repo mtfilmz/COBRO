@@ -1,8 +1,9 @@
-/* Cobro · clientes compartidos con Game Fix (en los dos sentidos).
-   Trae los clientes guardados de Game Fix y los contactos de sus reparaciones, y manda a Game Fix los clientes de Cobro.
-   Regla de repetidos: mismo teléfono → un solo cliente; mismo nombre con teléfono distinto → dos clientes.
-   Nunca se borra un cliente ni se pisa un dato que ya tiene Cobro: solo se llenan los campos vacíos.
-   Si Game Fix tiene datos distintos de un cliente, Game Fix lo marca para que el dueño elija cuál conservar. */
+/* Cobro · clientes compartidos con Game Fix (en los dos sentidos), directo en la misma base de datos.
+   Cobro y Game Fix usan la misma base (Supabase de Game Fix) y la misma cuenta: Cobro entra con la sesión de la nube
+   (Ajustes › Nube) y lee los clientes de Game Fix y el contacto de sus reparaciones; y guarda en Game Fix sus clientes.
+   Sin códigos ni claves. Regla de repetidos: mismo teléfono → un solo cliente; mismo nombre con teléfono distinto → dos.
+   Nunca se borra un cliente ni se pisa un dato que ya existe, en ninguna de las dos apps: solo se llenan los vacíos.
+   De las reparaciones solo se lee nombre, teléfono y correo; nunca se tocan reparaciones, pagos ni fotos. */
 (function () {
   'use strict';
   var C = window.Cobro;
@@ -19,17 +20,29 @@
   }
   function GfError(msg, kind) { var e = new Error(msg); e.kind = kind; return e; }
 
-  function request(body) {
-    return invoke('gamefix_pedir', { cuerpo: JSON.stringify(body) }).then(function (r) {
+  /* Pedido a la base de Game Fix con la sesión de la nube (el programa solo permite clientes y el contacto de reparaciones). */
+  function pedir(metodo, ruta, cuerpo, prefer) {
+    return invoke('nube_pedir', { metodo: metodo, ruta: ruta, cuerpo: cuerpo == null ? null : JSON.stringify(cuerpo), prefer: prefer || null }).then(function (r) {
       var data = null;
       try { data = JSON.parse(r.body || 'null'); } catch (e) { data = null; }
-      if (r.status === 200) return data;
-      var msg = (data && data.error) || ('Game Fix respondió ' + r.status);
-      if (r.status === 403 && /recepci/i.test(msg)) throw GfError(msg, 'receive_off');
-      if (r.status === 403 || r.status === 401) throw GfError(msg, 'auth');
-      if (r.status === 409) throw GfError(msg, 'retry');
-      throw GfError(msg, 'error');
+      if (r.status >= 200 && r.status < 300) return data;
+      if (r.status === 401 || r.status === 403) throw GfError('La sesión de la nube venció. Entra otra vez con tu cuenta de Game Fix en Ajustes › Nube.', 'auth');
+      if (r.status === 409) throw GfError('Game Fix ya tiene ese cliente.', 'duplicado');
+      throw GfError((data && (data.message || data.error)) || ('Game Fix respondió ' + r.status), 'error');
     });
+  }
+  function todos(ruta) {
+    var out = [];
+    function page(after, n) {
+      if (n > 300) throw GfError('Game Fix devolvió demasiadas páginas.', 'error');
+      var q = ruta + '&order=id.asc&limit=1000' + (after ? '&id=gt.' + encodeURIComponent(after) : '');
+      return pedir('GET', q).then(function (rows) {
+        rows = rows || [];
+        rows.forEach(function (x) { out.push(x); });
+        if (rows.length === 1000) return page(rows[rows.length - 1].id, n + 1);
+      });
+    }
+    return page(null, 0).then(function () { return out; });
   }
 
   /* ---------- Comparar clientes ---------- */
@@ -53,24 +66,23 @@
   }
   function fingerprint(c) { var s = six(c); return [s.name, s.phone, s.email, s.contact, s.address, s.notes].join('\u0001'); }
 
+  /* Columnas de Game Fix ↔ campos de Cobro. */
+  var COLS = [['telefono', 'phone'], ['email', 'email'], ['contacto', 'contact'], ['direccion', 'address'], ['notas', 'notes']];
+  function exportar(row, kind) {
+    return {
+      source_id: kind + ':' + row.id, source_key: row.source_key || null,
+      name: row.cliente || '', phone: row.telefono || '', email: row.email || '',
+      contact: row.contacto || '', address: row.direccion || '', notes: kind === 'clients' ? (row.notas || '') : ''
+    };
+  }
+
   /* ---------- Traer de Game Fix ---------- */
-  function listAll(kind, b) {
-    var out = [];
-    var seen = {};
-    function page(after, n) {
-      if (n > 300) throw GfError('Game Fix devolvió demasiadas páginas.', 'error');
-      var body = { action: 'list', binding_id: b.bindingId, target_user_id: b.targetUserId, kind: kind, limit: 100 };
-      if (after) body.after = after;
-      return request(body).then(function (r) {
-        (r.clients || []).forEach(function (c) { out.push(c); });
-        if (r.next) {
-          if (seen[r.next]) throw GfError('Game Fix repitió una página.', 'error');
-          seen[r.next] = true;
-          return page(r.next, n + 1);
-        }
+  function traer(uid) {
+    return todos('/rest/v1/clients?select=id,cliente,telefono,email,contacto,direccion,notas,source_key').then(function (clients) {
+      return todos('/rest/v1/repairs?select=id,cliente,telefono,email&user_id=eq.' + uid).then(function (repairs) {
+        return { clients: clients, repairs: repairs };
       });
-    }
-    return page(null, 0).then(function () { return out; });
+    });
   }
 
   /* Une la lista de Game Fix con los clientes de Cobro. Devuelve los clientes cambiados o nuevos. */
@@ -88,6 +100,14 @@
       return copy;
     }
     function bySrc(src) { return pool.find(function (c) { return c.gf && (c.gf.srcs || []).indexOf(src) >= 0; }); }
+    function byGfId(src) {
+      var id = src.indexOf('clients:') === 0 ? src.slice(8) : '';
+      return UUID.test(id) ? pool.find(function (c) { return c.gf && c.gf.id === id; }) : null;
+    }
+    function bySourceKey(key) {
+      key = String(key || '');
+      return key.indexOf('cobro:') === 0 ? pool.find(function (c) { return c.id === key.slice(6); }) : null;
+    }
     function byPhone(p) { return pool.find(function (c) { return samePhone(c.phone, p); }); }
     function byEmail(e) { e = cleanEmail(e); return e ? pool.find(function (c) { return cleanEmail(c.email) === e; }) : null; }
     function byNameNoPhone(name) {
@@ -101,7 +121,7 @@
       var src = String(r.source_id || '');
       var kind = src.indexOf('clients:') === 0 ? 'clients' : 'repairs';
       var hasPhone = !!phoneKey(r.phone);
-      var target = bySrc(src) || (hasPhone ? byPhone(r.phone) : null);
+      var target = bySrc(src) || byGfId(src) || bySourceKey(r.source_key) || (hasPhone ? byPhone(r.phone) : null);
       if (!target && !hasPhone) target = byEmail(r.email);
       if (!target) {
         // Mismo nombre: se une solo si no choca el teléfono (uno de los dos no tiene).
@@ -136,112 +156,129 @@
     return { rows: Object.keys(changed).map(function (k) { return changed[k]; }), stats: stats };
   };
 
-  /* ---------- Mandar a Game Fix ---------- */
-  function push(b) {
+  /* ---------- Guardar en Game Fix ---------- */
+  function enviar(gfClients) {
+    var byId = {}, bySk = {};
+    gfClients.forEach(function (x) { byId[x.id] = x; if (x.source_key) bySk[x.source_key] = x; });
     var todo = C.data.customers.filter(function (c) {
       if (!String(c.name || '').trim()) return false;
       if (c.gf && c.gf.origin === 'repairs') return false;
       return !(c.gf && c.gf.sent === fingerprint(c));
     });
-    var stats = { sent: 0, conflicts: 0, created: 0 };
-    var pages = [];
-    for (var i = 0; i < todo.length; i += 25) pages.push(todo.slice(i, i + 25));
-    function send(k) {
-      if (k >= pages.length) return Promise.resolve(stats);
-      var batch = pages[k];
-      var clients = batch.map(function (c) {
-        var s = six(c);
-        return { source_id: 'cobro:' + c.id, origin_gamefix_id: c.gf && UUID.test(c.gf.id || '') ? c.gf.id : null, name: s.name, phone: s.phone, email: s.email, contact: s.contact, address: s.address, notes: s.notes };
-      });
-      return request({ action: 'receive', binding_id: b.bindingId, target_user_id: b.targetUserId, clients: clients }).then(function (r) {
-        var res = {};
-        (r.results || []).forEach(function (x) { res[x.source_id] = x; });
-        var rows = batch.map(function (c) {
-          var x = res['cobro:' + c.id];
-          if (!x) return null;
-          var copy = JSON.parse(JSON.stringify(c));
-          copy.gf = Object.assign({ srcs: [] }, copy.gf || {});
-          if (UUID.test(x.client_id || '')) copy.gf.id = x.client_id;
-          copy.gf.sent = fingerprint(c);
-          copy.gf.status = x.status;
-          if (x.status === 'conflict') stats.conflicts++;
-          if (x.status === 'created') stats.created++;
-          stats.sent++;
-          return copy;
-        }).filter(Boolean);
-        return rows.length ? C.commit({ put: { customers: rows } }) : null;
-      }).then(function () { return send(k + 1); });
+    var stats = { sent: 0, created: 0, completed: 0 };
+    var listos = [], nuevos = [], parches = [];
+    todo.forEach(function (c) {
+      var s = six(c);
+      var gid = c.gf && UUID.test(c.gf.id || '') ? c.gf.id : '';
+      var g = (gid && byId[gid]) || bySk['cobro:' + c.id] || null;
+      if (!g && gid) { listos.push({ c: c, id: gid, status: 'borrado_en_gamefix' }); return; } // lo borraron en Game Fix: no se vuelve a crear
+      if (!g && phoneKey(s.phone)) g = gfClients.find(function (x) { return samePhone(x.telefono, s.phone); }) || null;
+      if (!g) { nuevos.push(c); return; }
+      var patch = {};
+      COLS.forEach(function (k) { if (!String(g[k[0]] || '').trim() && s[k[1]]) patch[k[0]] = s[k[1]]; });
+      if (Object.keys(patch).length) parches.push({ c: c, id: g.id, patch: patch });
+      else listos.push({ c: c, id: g.id, status: 'unchanged' });
+    });
+    function marcar(c, id, status) {
+      var copy = JSON.parse(JSON.stringify(c));
+      copy.gf = Object.assign({ srcs: [] }, copy.gf || {});
+      if (UUID.test(id || '')) copy.gf.id = id;
+      copy.gf.sent = fingerprint(c);
+      copy.gf.status = status;
+      return copy;
     }
-    return send(0);
+    var filas = listos.map(function (x) { return marcar(x.c, x.id, x.status); });
+    // Completar datos vacíos en Game Fix (nunca se cambia un dato que ya tiene).
+    var chain = parches.reduce(function (p, x) {
+      return p.then(function () {
+        return pedir('PATCH', '/rest/v1/clients?id=eq.' + x.id, x.patch, 'return=minimal').then(function () {
+          filas.push(marcar(x.c, x.id, 'completed')); stats.completed++; stats.sent++;
+        });
+      });
+    }, Promise.resolve());
+    // Clientes nuevos de Cobro: se crean en Game Fix con su marca de origen (no se duplican aunque se repita el envío).
+    var pages = [];
+    for (var i = 0; i < nuevos.length; i += 50) pages.push(nuevos.slice(i, i + 50));
+    chain = pages.reduce(function (p, batch) {
+      return p.then(function () {
+        var rows = batch.map(function (c) {
+          var s = six(c);
+          return { cliente: s.name, telefono: s.phone, email: s.email, contacto: s.contact, direccion: s.address, notas: s.notes, source_key: 'cobro:' + c.id };
+        });
+        return pedir('POST', '/rest/v1/clients', rows, 'return=representation').then(function (made) {
+          var bySource = {};
+          (made || []).forEach(function (m) { bySource[m.source_key] = m; });
+          batch.forEach(function (c) {
+            var m = bySource['cobro:' + c.id];
+            if (m) { filas.push(marcar(c, m.id, 'created')); stats.created++; stats.sent++; }
+          });
+        });
+      });
+    }, chain);
+    return chain.then(function () {
+      return filas.length ? C.commit({ put: { customers: filas } }) : null;
+    }).then(function () { return stats; });
   }
 
   /* ---------- Ciclo ---------- */
   var running = null;
   C.gamefix = { status: '', error: '' };
 
-  C.gamefixConnected = function () { return !!(C.isDesktop() && cfg().bindingId); };
+  /* Comparte con Game Fix cuando la nube está conectada con la cuenta de Game Fix (y no se pausó en este equipo). */
+  C.gamefixAccount = function () { return C.nubeCuenta ? C.nubeCuenta() : null; };
+  C.gamefixConnected = function () { return !!(C.isDesktop() && C.gamefixAccount() && !cfg().paused); };
 
   C.gamefixSync = function (manual) {
     if (!C.gamefixConnected()) return Promise.resolve(null);
     if (running) return running;
     if (!navigator.onLine) return manual ? Promise.reject(new Error('Sin internet. Se sincroniza cuando vuelva la conexión.')) : Promise.resolve(null);
-    var b = cfg();
-    var result = { added: 0, linked: 0, sent: 0, created: 0, conflicts: 0, receiveOff: false };
+    var acc = C.gamefixAccount();
+    var result = { added: 0, linked: 0, sent: 0, created: 0, completed: 0 };
+    var gfClients = [];
     C.gamefix.status = 'sync';
-    running = listAll('clients', b).then(function (clients) {
-      return listAll('repairs', b).then(function (repairs) { return clients.concat(repairs); });
-    }).then(function (all) {
+    running = traer(acc.userId).then(function (r) {
+      gfClients = r.clients;
+      var all = r.clients.map(function (x) { return exportar(x, 'clients'); }).concat(r.repairs.map(function (x) { return exportar(x, 'repairs'); }));
       var m = C.gamefixMerge(all);
       result.added = m.stats.added;
       result.linked = m.stats.linked;
       if (!m.rows.length) return null;
       return C.commit({ put: { customers: m.rows, audit: [C.auditRow('Game Fix', 'Clientes de Game Fix: ' + m.stats.added + ' nuevos, ' + m.stats.linked + ' completados')] } });
     }).then(function () {
-      return push(b).then(function (s) {
-        result.sent = s.sent; result.created = s.created; result.conflicts = s.conflicts;
-      }, function (err) {
-        if (err && err.kind === 'receive_off') { result.receiveOff = true; return; }
-        throw err;
-      });
+      return enviar(gfClients).then(function (s) { result.sent = s.sent; result.created = s.created; result.completed = s.completed; });
     }).then(function () {
       C.gamefix.status = 'ok';
       C.gamefix.error = '';
-      return saveCfg({ lastSync: Date.now(), last: result, receiveOff: result.receiveOff, broken: false }).then(function () { return result; });
+      return saveCfg({ lastSync: Date.now(), last: result, broken: false }).then(function () { return result; });
     }).catch(function (err) {
       C.gamefix.status = 'error';
       C.gamefix.error = (err && err.message) || String(err);
-      var p = err && err.kind === 'auth' ? saveCfg({ broken: true }) : Promise.resolve();
-      return p.then(function () { if (manual) throw err; return null; });
+      if (manual) throw err;
+      return null;
     }).then(function (r) { running = null; return r; }, function (e) { running = null; throw e; });
     return running;
   };
 
-  C.gamefixState = function () { return invoke('gamefix_estado'); };
-  C.gamefixSaveKey = function (key) { return invoke('gamefix_guardar_clave', { clave: key }); };
-
-  /* Canje del código que genera Game Fix (64 caracteres hexadecimales). */
-  C.gamefixConnect = function (code) {
-    code = String(code || '').trim().toLowerCase();
-    if (!/^[0-9a-f]{64}$/.test(code)) return Promise.reject(new Error('El código de Game Fix tiene 64 letras y números (0-9, a-f). Cópialo completo.'));
-    var target = (function () { try { return (JSON.parse(localStorage.getItem('cobro-nube') || '{}') || {}).userId || ''; } catch (e) { return ''; } })();
-    if (!UUID.test(target)) target = cfg().targetUserId && UUID.test(cfg().targetUserId) ? cfg().targetUserId : C.uuid();
-    return request({ action: 'redeem', code: code, target_user_id: target, target_email: 'supermobilepr@gmail.com' }).catch(function (err) {
-      if (err && err.kind === 'auth') throw new Error('Game Fix no aceptó la clave. Revisa que la clave guardada en Game Fix sea la misma que la de Cobro.');
-      if (err && err.kind === 'retry') throw new Error('El código ya se usó o venció. Genera uno nuevo en Game Fix.');
-      throw err;
-    }).then(function (r) {
-      if (!r || r.status !== 'linked' || !UUID.test(r.binding_id || '') || r.target_user_id !== target) throw new Error('Game Fix respondió algo inesperado al vincular.');
-      return saveCfg({ bindingId: r.binding_id, targetUserId: target, connectedAt: Date.now(), broken: false }, 'Cobro conectado con los clientes de Game Fix');
-    }).then(function () { return C.gamefixSync(true); });
-  };
-
-  C.gamefixDisconnect = function () {
-    return invoke('gamefix_olvidar').then(function () {
-      var s = JSON.parse(JSON.stringify(C.settings));
-      s.gamefix = {};
-      return C.commit({ put: { kv: [{ key: 'settings', value: s }], audit: [C.auditRow('Game Fix', 'Cobro desconectado de los clientes de Game Fix')] } });
+  C.gamefixPause = function (paused) {
+    return saveCfg({ paused: !!paused }, paused ? 'Pausado compartir clientes con Game Fix en este equipo' : 'Reanudado compartir clientes con Game Fix').then(function () {
+      return paused ? null : C.gamefixSync(true);
     });
   };
+
+  /* Hasta la 0.7.x se compartía con un código y una clave privada guardada en el equipo: ya no hacen falta.
+     Se borra esa clave y se olvida el vínculo viejo (los clientes ya unidos conservan su relación). */
+  function quitarConexionVieja() {
+    var g = cfg();
+    if (!g.bindingId && !g.targetUserId) return Promise.resolve();
+    var olvidar = C.isDesktop() ? invoke('gamefix_olvidar').catch(function () { /* sin clave vieja */ }) : Promise.resolve();
+    return olvidar.then(function () {
+      var s = JSON.parse(JSON.stringify(C.settings));
+      var keep = { lastSync: g.lastSync, last: g.last, paused: g.paused };
+      s.gamefix = keep;
+      return C.commit({ put: { kv: [{ key: 'settings', value: s }], audit: [C.auditRow('Game Fix', 'Clientes con Game Fix: ahora directo con la cuenta de Game Fix (sin código ni clave)')] } });
+    });
+  }
+  C.gamefixMigrate = quitarConexionVieja;
 
   if (C.isDesktop()) {
     setInterval(function () { C.gamefixSync(); }, 30 * 60 * 1000);

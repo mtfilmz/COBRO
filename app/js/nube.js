@@ -42,6 +42,11 @@
     if (C.isDesktop()) invoke('nube_desconectar').catch(function () { /* sin sesión vieja que cerrar */ });
   })();
   C.nubeMoved = function () { return !C.nubeOn && !!state().moved; };
+  /* Cuenta de Game Fix con la que está conectada la nube (la usa también Clientes con Game Fix). */
+  C.nubeCuenta = function () {
+    var s = state();
+    return C.nubeOn && s.nube === NUBE_ID && s.userId ? { userId: s.userId, email: s.email || '' } : null;
+  };
 
   var st0 = state();
   C.nube = { status: C.nubeOn ? 'pend' : 'off', error: '', lastSync: st0.lastSync || 0, email: st0.email || '', progress: null };
