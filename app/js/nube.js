@@ -7,11 +7,11 @@
   'use strict';
   var C = window.Cobro;
 
-  /* Base de datos de Game Fix (Supabase). La clave es la pública (anon): ya va dentro de Game Fix.
+  /* Base de datos de Game Fix y Cobro en la nube propia (Supabase, fuera de Lovable). La clave es la pública.
      Hasta la 0.6.x la copia estaba en la base de Factura; NUBE_ID marca a cuál está conectado este equipo. */
-  var BASES = ['https://tbkptuvpzwvdjqmsbmeh.supabase.co'];
-  var APIKEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRia3B0dXZwend2ZGpxbXNibWVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxNzM2NTMsImV4cCI6MjA5MTc0OTY1M30.4oXZm3fff6bWx6bZIz96_5gNN-41XZfjEXafx6EbndE';
-  var NUBE_ID = 'gamefix';
+  var BASES = ['https://emaukmpwvmddmwkfoffk.supabase.co'];
+  var APIKEY = 'sb_publishable_oNUnnAakI5F_GPJRO0-uIw_eC482aNK';
+  var NUBE_ID = 'gamefix-propia';
   var PATH = '/rest/v1/cobro_records';
   var LS = 'cobro-nube';
   var ORDER = ['settings', 'counters', 'customers', 'catalog', 'invoices', 'payments', 'batches', 'photos'];
