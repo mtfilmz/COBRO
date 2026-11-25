@@ -111,9 +111,9 @@ Llama a la función tech-repair-clients de Game Fix con la clave privada de clie
 La clave se guarda aquí (carpeta de datos de la app), nunca en los ajustes ni en los respaldos. */
 
 const GAMEFIX_URL: &str =
-    "https://tbkptuvpzwvdjqmsbmeh.supabase.co/functions/v1/tech-repair-clients";
-// Clave pública (anon) de Game Fix: ya va dentro de la página de Game Fix; solo deja pasar la llamada.
-const GAMEFIX_ANON: &str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRia3B0dXZwend2ZGpxbXNibWVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxNzM2NTMsImV4cCI6MjA5MTc0OTY1M30.4oXZm3fff6bWx6bZIz96_5gNN-41XZfjEXafx6EbndE";
+    "https://emaukmpwvmddmwkfoffk.supabase.co/functions/v1/tech-repair-clients";
+// Clave pública de la nube propia de Game Fix y Cobro: solo deja pasar la llamada.
+const GAMEFIX_ANON: &str = "sb_publishable_oNUnnAakI5F_GPJRO0-uIw_eC482aNK";
 
 #[derive(Serialize, Deserialize, Default)]
 struct GameFixLocal {
