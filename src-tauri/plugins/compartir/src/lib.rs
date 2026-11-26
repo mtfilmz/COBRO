@@ -26,6 +26,14 @@ struct DirectArgs {
     app: Option<String>,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatArgs {
+    phone: String,
+    text: Option<String>,
+    app: Option<String>,
+}
+
 #[cfg(target_os = "android")]
 struct Compartir<R: Runtime>(tauri::plugin::PluginHandle<R>);
 
@@ -92,14 +100,34 @@ async fn share_whatsapp<R: Runtime>(
     .map(|_| ())
 }
 
-/// Abre la app de Mensajes con el número y la imagen adjunta.
+/// Abre el chat de WhatsApp de cualquier número con el texto escrito (sin imagen).
+#[tauri::command]
+async fn open_whatsapp_chat<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    phone: String,
+    text: Option<String>,
+    whatsapp: Option<String>,
+) -> Result<(), String> {
+    run(
+        &app,
+        "openWhatsAppChat",
+        ChatArgs {
+            phone,
+            text,
+            app: whatsapp,
+        },
+    )
+    .map(|_| ())
+}
+
+/// Abre la conversación del número en Mensajes; la imagen va adjunta o queda copiada para pegarla.
 #[tauri::command]
 async fn share_sms<R: Runtime>(
     app: tauri::AppHandle<R>,
     path: String,
     phone: String,
     text: Option<String>,
-) -> Result<(), String> {
+) -> Result<serde_json::Value, String> {
     run(
         &app,
         "shareSms",
@@ -110,7 +138,6 @@ async fn share_sms<R: Runtime>(
             app: None,
         },
     )
-    .map(|_| ())
 }
 
 /// Qué WhatsApp hay instalados: { whatsapp: bool, business: bool }.
@@ -124,6 +151,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
         .invoke_handler(tauri::generate_handler![
             share_file,
             share_whatsapp,
+            open_whatsapp_chat,
             share_sms,
             whatsapp_apps
         ])
