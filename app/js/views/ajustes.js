@@ -97,12 +97,12 @@
     try { cur = localStorage.getItem(C.isAndroid() ? 'cobro-wa-android' : 'cobro-wa-pc') || ''; } catch (e) { cur = ''; }
     var opts = C.isAndroid()
       ? [['auto', 'Automático (pregunta si hay dos)'], ['whatsapp', 'WhatsApp'], ['business', 'WhatsApp Business']]
-      : [['web', 'Navegador: abre WhatsApp Web o el programa'], ['app', 'Programa de WhatsApp para Windows']];
+      : [['app', 'Programa de WhatsApp para Windows (si no está, el navegador)'], ['web', 'Navegador: WhatsApp Web']];
     if (!cur) cur = opts[0][0];
     return '<section class="card pad stack"><h2 class="h2">Enviar facturas</h2>' +
       '<p class="small muted">' + (C.isAndroid()
-        ? 'WhatsApp y Mensaje abren el chat del número de "Enviar a" con la imagen de la factura lista; solo tocas enviar.'
-        : 'WhatsApp copia la imagen y abre el chat del número de "Enviar a"; la pegas con Ctrl+V. Mensaje abre Enlace Móvil (Phone Link) con el número; necesitas tu teléfono Android vinculado en Enlace Móvil.') + '</p>' +
+        ? 'WhatsApp abre el chat del número de "Enviar a" con la imagen de la factura; solo tocas Enviar. Con un cliente nuevo, la primera vez se abre su chat con un saludo: lo envías, vuelves a Cobro y se abre el mismo chat con la foto. Mensaje abre la conversación del número; si la foto no aparece sola, mantén el dedo en el cuadro de texto y toca Pegar.'
+        : 'WhatsApp copia la imagen y abre el chat del número de "Enviar a"; la pegas con Ctrl+V y tocas Enviar. Mensaje abre Enlace Móvil (Phone Link) con el número; necesitas tu teléfono Android vinculado en Enlace Móvil.') + '</p>' +
       '<label class="field">' + (C.isAndroid() ? 'WhatsApp para enviar facturas' : 'Abrir WhatsApp con') + '<select class="input" id="wa-pref">' +
       opts.map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === cur ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></label></section>';
   }

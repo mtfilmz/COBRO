@@ -3,6 +3,8 @@ package pr.supermobile.compartir
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.Telephony
@@ -31,8 +33,31 @@ class DirectArgs {
     var app: String? = null
 }
 
+@InvokeArg
+class ChatArgs {
+    lateinit var phone: String
+    var text: String? = null
+    var app: String? = null
+}
+
 @TauriPlugin
 class SharePlugin(private val activity: Activity) : Plugin(activity) {
+
+    private fun whatsappPackage(app: String?): String? {
+        val order = if (app == "business") listOf("com.whatsapp.w4b", "com.whatsapp") else listOf("com.whatsapp", "com.whatsapp.w4b")
+        return order.firstOrNull { installed(it) }
+    }
+
+    /** Deja la imagen copiada para pegarla (Mantener el dedo › Pegar) si la otra app no la pone sola. */
+    private fun copyImage(uri: Uri, pkg: String?) {
+        try {
+            if (pkg != null) activity.grantUriPermission(pkg, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            val cm = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            cm.setPrimaryClip(ClipData.newUri(activity.contentResolver, "Factura", uri))
+        } catch (e: Exception) {
+            // Sin portapapeles: la imagen igual queda guardada en el teléfono.
+        }
+    }
 
     private fun uriFor(path: String): Uri? {
         val file = File(path)
@@ -93,8 +118,7 @@ class SharePlugin(private val activity: Activity) : Plugin(activity) {
                 invoke.reject("No se encontró la imagen de la factura.")
                 return
             }
-            val order = if (args.app == "business") listOf("com.whatsapp.w4b", "com.whatsapp") else listOf("com.whatsapp", "com.whatsapp.w4b")
-            val pkg = order.firstOrNull { installed(it) }
+            val pkg = whatsappPackage(args.app)
             if (pkg == null) {
                 invoke.reject("WhatsApp no está instalado en este teléfono.")
                 return
@@ -118,7 +142,32 @@ class SharePlugin(private val activity: Activity) : Plugin(activity) {
         }
     }
 
-    /** Abre la app de Mensajes (la que use el teléfono) con el número y la imagen adjunta. */
+    /** Abre el chat de WhatsApp de CUALQUIER número (aunque no esté en tus contactos ni tengas chat con él),
+     *  con el texto ya escrito. WhatsApp no deja adjuntar una imagen por este camino. */
+    @Command
+    fun openWhatsAppChat(invoke: Invoke) {
+        try {
+            val args = invoke.parseArgs(ChatArgs::class.java)
+            val pkg = whatsappPackage(args.app)
+            if (pkg == null) {
+                invoke.reject("WhatsApp no está instalado en este teléfono.")
+                return
+            }
+            val digits = args.phone.filter { it.isDigit() }
+            val text = args.text?.takeIf { it.isNotBlank() }
+            val url = "https://api.whatsapp.com/send?phone=" + digits + (if (text != null) "&text=" + Uri.encode(text) else "")
+            val view = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply { setPackage(pkg) }
+            activity.startActivity(view)
+            invoke.resolve()
+        } catch (e: ActivityNotFoundException) {
+            invoke.reject("WhatsApp no está instalado en este teléfono.")
+        } catch (e: Exception) {
+            invoke.reject("No se pudo abrir WhatsApp: " + (e.message ?: e.toString()))
+        }
+    }
+
+    /** Abre la conversación del número en la app de Mensajes (Samsung, Google…) con el texto escrito.
+     *  La imagen se intenta adjuntar y además queda copiada para pegarla si la app no la pone sola. */
     @Command
     fun shareSms(invoke: Invoke) {
         try {
@@ -128,26 +177,25 @@ class SharePlugin(private val activity: Activity) : Plugin(activity) {
                 invoke.reject("No se encontró la imagen de la factura.")
                 return
             }
+            val phone = args.phone.filter { it.isDigit() || it == '+' }
             val smsApp = Telephony.Sms.getDefaultSmsPackage(activity)
-            val send = Intent(Intent.ACTION_SEND).apply {
-                type = "image/jpeg"
+            copyImage(uri, smsApp)
+            val open = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:$phone")).apply {
                 if (smsApp != null) setPackage(smsApp)
-                putExtra(Intent.EXTRA_STREAM, uri)
-                putExtra("address", args.phone)
                 putExtra("sms_body", args.text ?: "")
+                putExtra(Intent.EXTRA_STREAM, uri)
                 clipData = ClipData.newRawUri("", uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             try {
-                activity.startActivity(send)
+                activity.startActivity(open)
             } catch (e: ActivityNotFoundException) {
-                // Sin app de mensajes que acepte imágenes: abrir el mensaje al número (sin imagen).
-                val plain = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + args.phone)).apply {
-                    putExtra("sms_body", args.text ?: "")
-                }
-                activity.startActivity(plain)
+                open.setPackage(null)
+                activity.startActivity(open)
             }
-            invoke.resolve()
+            val ret = JSObject()
+            ret.put("copied", true)
+            invoke.resolve(ret)
         } catch (e: Exception) {
             invoke.reject("No se pudo abrir Mensajes: " + (e.message ?: e.toString()))
         }

@@ -33,6 +33,8 @@
   }
 
   C.openDb().then(C.load).then(function () {
+    return C.appVersion().then(function (v) { if (v) C.VERSION = String(v); }, function () { /* se queda la escrita */ });
+  }).then(function () {
     if (!location.hash) location.replace('#/inicio');
     C.render();
     resetIdle();

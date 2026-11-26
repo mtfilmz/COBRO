@@ -3,7 +3,8 @@
   'use strict';
   var C = (window.Cobro = window.Cobro || {});
 
-  C.VERSION = '0.8.1';
+  /* Al abrir, app.js lo cambia por la versión real del programa instalado. */
+  C.VERSION = '0.9.1';
 
   /* Identificador único universal (lo exige FinTrack para los pagos). */
   C.uuid = function () {
@@ -245,6 +246,13 @@
     } catch (e) { /* sigue con el navegador */ }
     var w = window.open(url, '_blank', 'noopener');
     return !!w;
+  };
+
+  /* Igual que openExternal, pero avisa si el equipo no tiene programa para abrir ese enlace (p. ej. whatsapp://). */
+  C.openUrl = function (url) {
+    var T = window.__TAURI__;
+    if (T && T.opener && T.opener.openUrl) return Promise.resolve(T.opener.openUrl(url));
+    return window.open(url, '_blank', 'noopener') ? Promise.resolve() : Promise.reject(new Error('No se pudo abrir ' + url));
   };
 
   /* Reduce una foto a 1280 px y JPEG para guardarla en el equipo. */

@@ -6,6 +6,18 @@
 
   function find(id) { return C.data.invoices.find(function (i) { return i.id === id; }); }
 
+  /* Android: al volver a Cobro desde WhatsApp, sigue solo con el segundo paso (la foto) si quedó pendiente. */
+  function resumeWa() {
+    var p = C._waPending;
+    if (!p || document.hidden) return;
+    var age = Date.now() - p.at;
+    if (age > 20 * 60 * 1000) { C._waPending = null; return; }
+    if (age < 2500) return;
+    setTimeout(p.run, 700);
+  }
+  document.addEventListener('visibilitychange', resumeWa);
+  window.addEventListener('focus', resumeWa);
+
   function waNumber(phone) {
     var d = C.digits(phone);
     if (d.length === 10) d = '1' + d;
@@ -101,6 +113,7 @@
         '<button type="button" class="btn" id="saveimg">' + C.icon('image', 16) + 'Guardar imagen</button>' +
         (C.isAndroid() ? '' : '<button type="button" class="btn" id="print">' + C.icon('printer', 16) + 'Imprimir</button>') +
         (C.isAdmin() && !inv.voided ? '<button type="button" class="btn danger-text" id="void">Anular</button>' : '') + '</div></header>' +
+        (C.isAndroid() ? '<div class="notice no-print" id="wa-step" hidden>' + C.icon('info', 16) + '<span style="flex:1">¿Ya enviaste el saludo? Ahora se abre el mismo chat con la foto de la factura.</span><button type="button" class="btn primary sm">Enviar la foto</button></div>' : '') +
         (inv.voided ? '<p class="notice danger no-print">' + C.icon('info', 16) + 'Anulada el ' + esc(C.stamp(inv.voidedAt || inv.createdAt)) + '. Motivo: ' + esc(inv.voidReason || '—') + '</p>' : '') +
         '<div class="detail-layout"><div class="paper-wrap">' + paper(inv, v) + '</div><aside class="detail-side no-print">' + side + '</aside></div>';
     },
@@ -193,6 +206,39 @@
         });
       }
 
+      /* Android: WhatsApp solo pone la imagen directo en el chat si ya tienes un chat con ese número;
+         si no, enseña la lista de contactos. Por eso, con un número nuevo, primero se abre su chat con un
+         saludo (eso funciona con cualquier número) y al volver a Cobro se abre el mismo chat con la imagen. */
+      function waChats() { try { return JSON.parse(lsGet('cobro-wa-chats') || '{}') || {}; } catch (e) { return {}; } }
+      function waRemember(n) { var k = waChats(); k[n] = Date.now(); lsSet('cobro-wa-chats', JSON.stringify(k)); }
+      function waImage(app) {
+        return tempImage().then(function (path) {
+          return window.__TAURI__.core.invoke('plugin:compartir|share_whatsapp', { path: path, phone: num, text: caption(), whatsapp: app });
+        });
+      }
+      function waGreeting() {
+        return 'Hola, le envío su factura ' + inv.number + ' de ' + (C.settings.business.name || 'nuestro negocio') + '.';
+      }
+      var waStep = root.querySelector('#wa-step');
+      function waSecondStep(app) {
+        if (!waStep) return;
+        waStep.hidden = false;
+        var b = waStep.querySelector('button');
+        var fired = false;
+        function go() {
+          if (fired) return;
+          fired = true;
+          C._waPending = null;
+          waStep.hidden = true;
+          waRemember(num);
+          waImage(app).then(function () {
+            C.commit({ put: { audit: [C.auditRow('WhatsApp', 'Imagen de la factura enviada por WhatsApp a ' + who, inv.id)] } });
+          }).catch(C.fail);
+        }
+        b.onclick = go;
+        C._waPending = { at: Date.now(), run: go };
+      }
+
       /* WhatsApp directo al número de "Enviar a". */
       var wa = root.querySelector('#wa');
       if (wa) wa.addEventListener('click', function () {
@@ -201,15 +247,20 @@
         var done;
         if (C.isAndroid()) {
           done = pickWhatsApp().then(function (app) {
-            return tempImage().then(function (path) {
-              return window.__TAURI__.core.invoke('plugin:compartir|share_whatsapp', { path: path, phone: num, text: caption(), whatsapp: app });
+            if (waChats()[num]) return waImage(app);
+            return window.__TAURI__.core.invoke('plugin:compartir|open_whatsapp_chat', { phone: num, text: waGreeting(), whatsapp: app }).then(function () {
+              waSecondStep(app);
+              C.toast('Envía el saludo y vuelve a Cobro: se abre el mismo chat con la foto de la factura.');
             });
           });
         } else {
+          /* Windows: abre el chat del número en el programa de WhatsApp; si no está instalado, en el navegador. */
           done = copyAndSave().then(function (r) {
-            var url = lsGet('cobro-wa-pc') === 'app' ? 'whatsapp://send?phone=' + num : 'https://wa.me/' + num;
-            C.openExternal(url);
-            C.toast(r.copied ? 'Imagen copiada. En el chat de WhatsApp pégala con Ctrl+V y envía.' : 'Imagen guardada' + (r.path ? ' en ' + r.path : '') + '. Adjúntala en el chat de WhatsApp.');
+            var web = 'https://wa.me/' + num;
+            var open = lsGet('cobro-wa-pc') === 'web' ? C.openUrl(web) : C.openUrl('whatsapp://send?phone=' + num).catch(function () { return C.openUrl(web); });
+            return open.then(function () {
+              C.toast(r.copied ? 'Imagen copiada. En el chat de WhatsApp pégala con Ctrl+V y toca Enviar.' : 'Imagen guardada' + (r.path ? ' en ' + r.path : '') + '. Adjúntala en el chat de WhatsApp.');
+            });
           });
         }
         done.then(function () {
@@ -226,6 +277,8 @@
         if (C.isAndroid()) {
           done = tempImage().then(function (path) {
             return window.__TAURI__.core.invoke('plugin:compartir|share_sms', { path: path, phone: '+' + num, text: caption() });
+          }).then(function () {
+            C.toast('Si la foto no aparece en el mensaje, mantén el dedo en el cuadro de texto y toca Pegar.');
           });
         } else {
           done = copyAndSave().then(function (r) {
