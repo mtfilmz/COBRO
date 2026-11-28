@@ -204,6 +204,7 @@ struct FinTrackLocal {
     clave: Option<String>,
     base: Option<String>,
     apikey: Option<String>,
+    binding_id: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -310,7 +311,40 @@ fn fintrack_olvidar(app: tauri::AppHandle) -> Result<(), String> {
     let mut datos = leer_fintrack(&app);
     datos.base = None;
     datos.apikey = None;
+    datos.binding_id = None;
     guardar_fintrack(&app, &datos)
+}
+
+fn es_uuid(s: &str) -> bool {
+    let p: Vec<&str> = s.split('-').collect();
+    if p.len() != 5 { return false; }
+    let lens = [8usize, 4, 4, 4, 12];
+    p.iter().zip(lens.iter()).all(|(seg, &l)| {
+        seg.len() == l && seg.chars().all(|c| c.is_ascii_hexdigit())
+    })
+}
+
+/// Guarda el binding_id en fintrack.json (lo llama JS después de conectar con éxito).
+#[tauri::command]
+fn fintrack_guardar_vinculo(app: tauri::AppHandle, binding_id: String) -> Result<(), String> {
+    if !es_uuid(&binding_id) {
+        return Err("binding_id no es un UUID válido.".into());
+    }
+    let mut datos = leer_fintrack(&app);
+    datos.binding_id = Some(binding_id);
+    guardar_fintrack(&app, &datos)
+}
+
+/// Devuelve el binding_id guardado en Rust (para recuperar la conexión tras una actualización).
+#[tauri::command]
+fn fintrack_recuperar(app: tauri::AppHandle) -> Option<String> {
+    let datos = leer_fintrack(&app);
+    // Solo devolvemos el binding_id si también tenemos base y clave (conexión completa).
+    if datos.base.is_some() && datos.clave.is_some() {
+        datos.binding_id
+    } else {
+        None
+    }
 }
 
 #[tauri::command]
@@ -781,6 +815,8 @@ pub fn run() {
             fintrack_olvidar,
             fintrack_vincular,
             fintrack_enviar_pago,
+            fintrack_guardar_vinculo,
+            fintrack_recuperar,
             nube_estado,
             nube_conectar,
             nube_desconectar,

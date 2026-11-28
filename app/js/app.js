@@ -40,7 +40,7 @@
     resetIdle();
     autoBackup();
     setInterval(autoBackup, 6 * 3600 * 1000);
-    setTimeout(function () { C.fintrackSync(); }, 4000);
+    C.fintrackRecuperar().then(function () { setTimeout(function () { C.fintrackSync(); }, 4000); });
     setTimeout(function () { C.nubeSync(); }, 6000);
     setTimeout(function () { C.gamefixMigrate().catch(function () {}).then(function () { return C.gamefixSync(); }); }, 12000);
   }).catch(fatal);

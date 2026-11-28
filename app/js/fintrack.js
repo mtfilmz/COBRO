@@ -240,7 +240,11 @@
       s.fintrack.connectedAt = Date.now();
       s.fintrack.since = C.today();
       if (!s.billing.fintrackDesde) s.billing.fintrackDesde = s.fintrack.connectedAt;
-      return C.commit({ put: { kv: [{ key: 'settings', value: s }], audit: [C.auditRow('FinTrack', 'Cobro conectado con FinTrack')] } });
+      return C.commit({ put: { kv: [{ key: 'settings', value: s }], audit: [C.auditRow('FinTrack', 'Cobro conectado con FinTrack')] } })
+        .then(function () {
+          /* Guardamos el binding_id en Rust para que sobreviva actualizaciones del instalador. */
+          return invoke('fintrack_guardar_vinculo', { bindingId: s.fintrack.bindingId }).catch(function () { /* no crítico */ });
+        });
     });
   };
 
@@ -252,6 +256,19 @@
     var put = { kv: [{ key: 'settings', value: s }], audit: [C.auditRow('FinTrack', 'Cobro desconectado de FinTrack')] };
     if (cancel.length) put.outbox = cancel;
     return (C.isDesktop() ? invoke('fintrack_olvidar') : Promise.resolve()).then(function () { return C.commit({ put: put }); });
+  };
+
+  /* Recupera el binding_id desde Rust si el IndexedDB fue borrado por una actualización del instalador.
+     Se llama desde app.js justo después de C.load(), antes del primer fintrackSync. */
+  C.fintrackRecuperar = function () {
+    if (!C.isDesktop() || C.fintrackConnected()) return Promise.resolve();
+    return invoke('fintrack_recuperar').then(function (bindingId) {
+      if (!bindingId || !UUID.test(bindingId)) return;
+      var s = JSON.parse(JSON.stringify(C.settings));
+      s.fintrack = Object.assign({}, s.fintrack || {}, { bindingId: bindingId, enabled: true });
+      return C.commit({ put: { kv: [{ key: 'settings', value: s }] } })
+        .then(function () { C.toast('Conexión con FinTrack restaurada automáticamente.'); });
+    }).catch(function () { /* si Rust no tiene binding_id guardado, no pasa nada */ });
   };
 
   /* Revisa la cola al abrir, cada 2 minutos y cuando vuelve internet. */
