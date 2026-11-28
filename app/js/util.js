@@ -4,7 +4,7 @@
   var C = (window.Cobro = window.Cobro || {});
 
   /* Al abrir, app.js lo cambia por la versión real del programa instalado. */
-  C.VERSION = '0.9.1';
+  C.VERSION = '0.9.2';
 
   /* Identificador único universal (lo exige FinTrack para los pagos). */
   C.uuid = function () {

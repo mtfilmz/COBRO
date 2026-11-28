@@ -102,11 +102,36 @@
     return save(rows).then(function () { return rows.length; });
   };
 
+  /* Pagos que quedaron "cancelados" al desconectar FinTrack (o con un vínculo viejo) pero cuya factura sigue
+     válida: al estar conectado otra vez se vuelven a poner en la cola, con el vínculo actual. Así no se pierden
+     cobros por desconectar y volver a conectar. Las facturas anuladas no se tocan. */
+  C.fintrackRevivir = function () {
+    if (!C.fintrackConnected()) return Promise.resolve(0);
+    var invById = {};
+    C.data.invoices.forEach(function (i) { invById[i.id] = i; });
+    var payById = {};
+    C.data.payments.forEach(function (p) { payById[p.id] = p; });
+    var rows = [];
+    C.data.outbox.forEach(function (o) {
+      if (o.status !== 'cancelado') return;
+      var p = payById[o.id];
+      var inv = p && invById[p.invoiceId];
+      if (!p || !inv || inv.voided || (p.ft && p.ft.status === 'enviado')) return;
+      var fresh = C.fintrackOutboxRow(p, inv);
+      if (!fresh) return;
+      rows.push(Object.assign({}, o, {
+        status: 'pendiente', payload: fresh.payload, amount: fresh.amount, tries: 0, nextAt: 0,
+        lastError: '', revivido: Date.now()
+      }));
+    });
+    return save(rows).then(function () { return rows.length; });
+  };
+
   /* Envía los pagos pendientes, uno por uno, en orden. */
   C.fintrackSync = function () {
     if (syncing || !C.isDesktop() || !C.fintrackConnected() || !navigator.onLine) return Promise.resolve();
     syncing = true;
-    return guardarDesde().then(C.fintrackQueueMissing).then(function () { syncing = false; return enviar(); }, function (err) { syncing = false; throw err; })
+    return guardarDesde().then(C.fintrackRevivir).then(C.fintrackQueueMissing).then(function () { syncing = false; return enviar(); }, function (err) { syncing = false; throw err; })
       .then(function () { return marcarPagos(C.data.outbox.filter(function (o) { return o.status === 'enviado'; })); });
   };
 
@@ -137,7 +162,10 @@
     var o = C.fintrackRowFor(p.id);
     if (o && o.status === 'enviado') return { key: 'enviado', label: 'Enviado a FinTrack', detail: '' };
     if (inv && inv.voided) return { key: 'no_aplica', label: 'No se envía', detail: 'La factura está anulada.' };
-    if (o && o.status === 'cancelado') return { key: 'no_aplica', label: 'No se envía', detail: 'La factura se anuló antes de enviarlo.' };
+    if (o && o.status === 'cancelado') {
+      /* Cancelado por desconectar FinTrack: la factura sigue válida, así que sí falta por llegar. */
+      return { key: 'sin_enviar', label: 'Sin enviar', detail: C.fintrackConnected() ? 'Se vuelve a enviar en la próxima revisión (cada 2 minutos).' : 'Se envía al volver a conectar FinTrack.' };
+    }
     if (o && (o.status === 'conflicto' || o.status === 'rechazado')) return { key: 'problema', label: 'Rechazado por FinTrack', detail: o.lastError || 'FinTrack no aceptó el pago.' };
     if (o && o.status === 'pendiente') return { key: 'pendiente', label: 'Pendiente de enviar', detail: o.lastError || 'En cola: se envía en cuanto haya internet.' };
     if (C.fintrackConnected()) {
@@ -159,6 +187,11 @@
     queue.forEach(function (row) {
       chain = chain.then(function () {
         if (stop) return;
+        /* Si el pago se puso en cola con un vínculo anterior, se manda con el vínculo actual. */
+        try {
+          var pl = JSON.parse(row.payload);
+          if (pl.binding_id !== bindingId) { pl.binding_id = bindingId; row = Object.assign({}, row, { payload: JSON.stringify(pl) }); }
+        } catch (e) { /* payload dañado: FinTrack lo rechazará y quedará marcado */ }
         return invoke('fintrack_enviar_pago', { cuerpo: row.payload, idempotencia: row.id }).then(function (r) {
           var next = Object.assign({}, row, { tries: (row.tries || 0) + 1, lastTryAt: Date.now() });
           var body = null;
